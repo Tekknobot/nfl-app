@@ -238,18 +238,19 @@ export default function AllGamesCalendarNFL(){
   // Bucket helper
   const gamesFor = (d)=> (data?.[dateKey(d)] || []).slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
 
-  // Auto-select first day with games when week changes
-  useEffect(()=>{
-    const first = week.find(d => gamesFor(d).length > 0) || week[0];
-    setSelectedDate(first);
-    // scroll pill into view
-    setTimeout(()=>{
-      if (!stripRef.current) return;
-      const el = stripRef.current.querySelector(`[data-day="${dateKey(first)}"]`);
-      if (el) el.scrollIntoView({ inline:'center', behavior:'smooth', block:'nearest' });
-    }, 50);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursor, data]);
+// Auto-select first day with games when week changes
+useEffect(() => {
+  const first = week.find(d => (data?.[dateKey(d)] || []).length > 0) || week[0];
+  setSelectedDate(first);
+
+  const key = dateKey(first);
+  const id = setTimeout(() => {
+    const el = stripRef.current?.querySelector?.(`[data-day="${key}"]`);
+    if (el) el.scrollIntoView({ inline: "center", behavior: "smooth", block: "nearest" });
+  }, 50);
+
+  return () => clearTimeout(id);
+}, [week, data]);
 
   const selectedGames = gamesFor(selectedDate);
 
