@@ -1,14 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box, Card, CardContent, Chip, Stack, Typography, Drawer, Divider,
   List, ListItem, ListItemText, IconButton, Button, CircularProgress,
-  useMediaQuery, LinearProgress, Switch, FormControlLabel, Tooltip
+  useMediaQuery, LinearProgress
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
-import TodayIcon from "@mui/icons-material/Today";
 import { useTheme } from "@mui/material/styles";
 
 /* ---------- UI helpers ---------- */
@@ -64,6 +63,7 @@ async function getTeamsMap() {
 }
 
 async function fetchTeamGamesForSeason(teamId, seasonYear) {
+  // Pull up to 100/game page via cursor; we keep it small via guard to avoid excessive calls.
   const out = [];
   let cursor;
   let guard = 0;
@@ -87,6 +87,7 @@ async function fetchTeamGamesForSeason(teamId, seasonYear) {
 function isFinalGame(g) {
   const hasScores = typeof g.home_score === "number" && typeof g.visitor_score === "number";
   const looksFinal = (g.status || "").toLowerCase().includes("final");
+  // Some feeds may not use "Final" but provide scores; accept either.
   return hasScores || looksFinal;
 }
 
@@ -100,12 +101,15 @@ async function getTeamFormFromPastGames(teamAbbrev, season) {
   if (teamFormCache.has(cacheKey)) return teamFormCache.get(cacheKey);
 
   const prevSeason = (Number(season) || new Date().getFullYear()) - 1;
+
   const [curr, prev] = await Promise.all([
     fetchTeamGamesForSeason(id, season),
     fetchTeamGamesForSeason(id, prevSeason)
   ]);
 
+  // Recent ~10 finals from both seasons combined.
   const finals = [...curr, ...prev].filter(isFinalGame).slice(-10);
+
   let pts = 0, opp = 0, n = 0;
   for (const g of finals) {
     const isHome = String(g.home_team?.id) === String(id) || g.home_team?.abbreviation === teamAbbrev;
@@ -116,6 +120,7 @@ async function getTeamFormFromPastGames(teamAbbrev, season) {
     const oppPts  = isHome ? vs : hs;
     pts += teamPts; opp += oppPts; n++;
   }
+
   const form = { ppg: n ? pts/n : null, oppg: n ? opp/n : null };
   teamFormCache.set(cacheKey, form);
   return form;
@@ -138,12 +143,8 @@ export default function AllGamesCalendarNFL(){
   const [probLoading, setProbLoading] = useState(false);
   const [probNote, setProbNote] = useState("");
 
-  // mobile tuning
-  const [hideEmptyDays, setHideEmptyDays] = useState(true);
-
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const weekTopRef = useRef(null);
 
   const weekOf = useMemo(()=>({
     from: startOfWeek(cursor),
@@ -175,22 +176,6 @@ export default function AllGamesCalendarNFL(){
   const gamesFor = (d)=> (data?.[keyFromDate(d)] || [])
     .slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
 
-  // Scroll to first day with games (mobile)
-  useEffect(()=>{
-    if (!isMobile || !data) return;
-    // wait for DOM paint
-    setTimeout(()=>{
-      const firstWithGames = days.find(d => gamesFor(d).length > 0);
-      if (!firstWithGames) return;
-      const el = document.querySelector(`[data-day-key="${keyFromDate(firstWithGames)}"]`);
-      if (el && weekTopRef.current) {
-        const top = el.getBoundingClientRect().top + window.scrollY - 72; // header offset
-        window.scrollTo({ top, behavior: "smooth" });
-      }
-    }, 10);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile, data, weekOf.from.getTime()]);
-
   // When a game is opened, compute win probability using past games (free plan)
   useEffect(()=>{
     let cancelled = false;
@@ -205,12 +190,14 @@ export default function AllGamesCalendarNFL(){
         const homeAbbr = g.home;
         const awayAbbr = g.away;
 
+        // Pull past-game forms from BDL (free) — this and previous season
         const [homeForm, awayForm] = await Promise.all([
           getTeamFormFromPastGames(homeAbbr, season),
           getTeamFormFromPastGames(awayAbbr, season)
         ]);
 
-        const HFA = 2.0; // home-field advantage in points
+        // Model: expected margin = (home O vs away D) - (away O vs home D) + HFA
+        const HFA = 2.0; // basic home-field advantage in points
         let note = "Based on recent completed games (this & last season)";
         let margin;
 
@@ -249,70 +236,45 @@ export default function AllGamesCalendarNFL(){
     return ()=>{ cancelled = true; };
   }, [selected]);
 
-  /* ---------- Day card (mobile & desktop variants) ---------- */
-  function DayCard({ d }) {
+  /* ---------- UI subcomponent ---------- */
+  const DayCard = ({ d }) => {
     const games = gamesFor(d);
-    if (hideEmptyDays && isMobile && games.length === 0) return null;
-
     return (
       <Card
-        data-day-key={keyFromDate(d)}
+        key={+d}
         sx={{
+          minWidth: isMobile ? 260 : 'auto',
+          flex: isMobile ? "0 0 auto" : "initial",
           backgroundColor:"background.paper",
-          border:1, borderColor:"rgba(255,255,255,.08)",
-          ...(isMobile
-            ? { mb:2, borderRadius:3, boxShadow:"rgba(0,0,0,.25) 0 6px 14px -6px" }
-            : {}
-          )
+          border:1, borderColor:"rgba(255,255,255,.08)"
         }}
       >
-        <CardContent sx={{ p: isMobile ? 1.25 : 2 }}>
+        <CardContent>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:1 }}>
-            <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ fontWeight:600 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight:600 }}>
               {dayName(d)} {d.getDate()}
             </Typography>
             <Chip size="small" label={`${games.length} ${games.length===1?'Game':'Games'}`} />
           </Stack>
 
-          <Stack gap={isMobile ? 0.75 : 1}>
+          <Stack gap={1}>
             {games.length === 0 && (
               <Typography variant="body2" sx={{ opacity:.7 }}>No games</Typography>
             )}
-
             {games.map((g, idx)=> (
-              <Button
-                key={idx}
-                onClick={()=> setSelected({ g, d })}
-                fullWidth
+              <Button key={idx} onClick={()=> setSelected({ g, d })} fullWidth
                 sx={{
-                  justifyContent:"space-between",
-                  p: isMobile ? 1 : 1.2,
-                  border:1, borderColor:"rgba(255,255,255,.10)",
-                  bgcolor:"rgba(255,255,255,.05)",
-                  textTransform:"none",
-                  borderRadius: 2,
-                  minHeight: 52
-                }}
-              >
-                <Stack direction="row" alignItems="center" gap={1.25} sx={{ minWidth: 0 }}>
-                  <Box sx={{ width:12, height:12, bgcolor: TEAM_COLORS[g.home]||"#999", borderRadius:"50%", flexShrink:0 }} />
-                  <Typography
-                    sx={{
-                      fontWeight:600,
-                      letterSpacing:.2,
-                      overflow:"hidden",
-                      textOverflow:"ellipsis",
-                      whiteSpace:"nowrap",
-                      maxWidth: isMobile ? "62vw" : "unset",
-                      color:"rgba(255,255,255,.95)"
-                    }}>
-                    {g.away} @ {g.home}
-                  </Typography>
+                  justifyContent:"space-between", p:1.2,
+                  border:1, borderColor:"rgba(255,255,255,.08)",
+                  bgcolor:"rgba(255,255,255,.03)", textTransform:"none"
+                }}>
+                <Stack direction="row" alignItems="center" gap={1}>
+                  <Box sx={{ width:10, height:10, bgcolor: TEAM_COLORS[g.home]||"#999", borderRadius:"50%" }} />
+                  <Typography>{g.away} @ {g.home}</Typography>
                 </Stack>
-
-                <Stack direction="row" alignItems="center" gap={1} sx={{ flexShrink:0 }}>
-                  <SportsFootballIcon fontSize="small" sx={{ opacity:.9 }} />
-                  <Typography variant="body2" sx={{ opacity:.9 }}>{fmtTime(g.kickoff)}</Typography>
+                <Stack direction="row" alignItems="center" gap={1}>
+                  <SportsFootballIcon fontSize="small"/>
+                  <Typography variant="body2">{fmtTime(g.kickoff)}</Typography>
                 </Stack>
               </Button>
             ))}
@@ -320,51 +282,18 @@ export default function AllGamesCalendarNFL(){
         </CardContent>
       </Card>
     );
-  }
+  };
 
   /* ---------- Render ---------- */
   return (
     <Box>
-      {/* Sticky week header with actions */}
-      <Stack
-        ref={weekTopRef}
-        direction="row"
-        alignItems="center"
-        gap={1}
-        sx={{
-          mb:2,
-          position: "sticky",
-          top: 0,
-          zIndex: 5,
-          bgcolor: "transparent",
-          pt: .5
-        }}
-      >
+      <Stack direction="row" alignItems="center" gap={1} sx={{ mb:2 }}>
         <IconButton onClick={()=> setCursor(addWeeks(cursor,-1))}><ChevronLeftIcon/></IconButton>
-        <Typography variant={isMobile ? "h6":"h5"} sx={{ letterSpacing:1, flex:1 }}>
+        <Typography variant="h5" sx={{ letterSpacing:1, flex:1 }}>
           Week of {monthName(weekOf.from)} {weekOf.from.getDate()}, {weekOf.from.getFullYear()}
         </Typography>
-        <Tooltip title="Jump to current week">
-          <IconButton onClick={()=> setCursor(startOfWeek(new Date()))}><TodayIcon/></IconButton>
-        </Tooltip>
         <IconButton onClick={()=> setCursor(addWeeks(cursor,1))}><ChevronRightIcon/></IconButton>
       </Stack>
-
-      {/* Hide empty days toggle (mobile only) */}
-      {isMobile && (
-        <FormControlLabel
-          sx={{ mb:1 }}
-          control={
-            <Switch
-              checked={hideEmptyDays}
-              onChange={(_,v)=> setHideEmptyDays(v)}
-              color="secondary"
-              size="small"
-            />
-          }
-          label={<Typography variant="body2">Hide empty days</Typography>}
-        />
-      )}
 
       {data === null ? (
         <Stack alignItems="center" sx={{ py:6, opacity:.8 }}>
@@ -374,17 +303,15 @@ export default function AllGamesCalendarNFL(){
       ) : (
         <>
           {isMobile ? (
-            // Mobile: stacked vertical days
-            <Box>
-              {days.map((d)=> <DayCard key={+d} d={d} />)}
+            <Box sx={{ display:"flex", gap:2, overflowX:"auto", pb:1, px:0.5, scrollSnapType:"x mandatory" }}>
+              {days.map((d)=> (
+                <Box key={+d} sx={{ scrollSnapAlign:"start" }}>
+                  <DayCard d={d} />
+                </Box>
+              ))}
             </Box>
           ) : (
-            // Desktop: 7-column grid (original layout)
-            <Stack
-              direction="row"
-              gap={2}
-              sx={{ display:"grid", gridTemplateColumns:`repeat(${days.length}, 1fr)` }}
-            >
+            <Stack direction="row" gap={2} sx={{ display:"grid", gridTemplateColumns:`repeat(${days.length}, 1fr)` }}>
               {days.map((d)=> <DayCard key={+d} d={d} />)}
             </Stack>
           )}
