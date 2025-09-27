@@ -8,10 +8,10 @@ export default function About() {
         <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
           <CardContent>
             <Typography variant="h4" sx={{ mb: 1, letterSpacing: 1 }}>
-              KIKOFF
+              SNAPPCOUNT
             </Typography>
             <Typography sx={{ opacity: .9 }}>
-              KIKOFF is a lightweight NFL schedule & matchup viewer. Browse games by week, tap a matchup,
+              SNAPPCOUNT is a lightweight NFL schedule & matchup viewer. Browse games by week, tap a matchup,
               and see a quick, transparent estimate of the home team’s win probability based on recent results.
             </Typography>
           </CardContent>
@@ -38,7 +38,7 @@ export default function About() {
             <Typography variant="h5" sx={{ mb: 1 }}>How the Win Probability Works</Typography>
             <Divider sx={{ mb: 2 }} />
             <Typography sx={{ mb: 1 }}>
-              KIKOFF computes a simple estimate for the home team’s win chance using past completed games:
+              SNAPPCOUNT computes a simple estimate for the home team’s win chance using past completed games:
             </Typography>
             <Typography component="div" sx={{ pl: 2 }}>
               <ul style={{ margin: 0, paddingLeft: "1em" }}>
