@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Card, CardContent, Chip, Stack, Typography, Drawer, Divider,
   List, ListItem, ListItemText, IconButton, Button, CircularProgress,
-  useMediaQuery, LinearProgress
+  useMediaQuery, LinearProgress, ListItemButton, Tooltip, Avatar
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
+import TodayIcon from "@mui/icons-material/Today";
 import { useTheme } from "@mui/material/styles";
 
 /* ---------- UI helpers ---------- */
@@ -24,9 +25,10 @@ const dayName = d => d.toLocaleDateString(undefined,{weekday:"short"});
 const monthName = d => d.toLocaleDateString(undefined,{month:"long"});
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 const pad = n => String(n).padStart(2,'0');
-const keyFromDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
-function addWeeks(d,n){ const x=new Date(d); x.setDate(x.getDate()+n*7); return x; }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function addWeeks(d,n){ return addDays(d, n*7); }
 function startOfWeek(d){
   const x = new Date(d);
   const dow = x.getDay(); // Sunday=0
@@ -54,7 +56,6 @@ async function getTeamsMap() {
     const j = await r.json();
     const map = new Map();
     for (const t of j.data || []) {
-      // Expect fields like { id, abbreviation, name }
       if (t.abbreviation && t.id != null) map.set(t.abbreviation.toUpperCase(), String(t.id));
     }
     TEAMS_MAP_PROMISE = Promise.resolve(map);
@@ -63,23 +64,20 @@ async function getTeamsMap() {
 }
 
 async function fetchTeamGamesForSeason(teamId, seasonYear) {
-  // Pull up to 100/game page via cursor; we keep it small via guard to avoid excessive calls.
   const out = [];
-  let cursor;
-  let guard = 0;
+  let cursor, guard = 0;
   do {
     const p = new URLSearchParams();
     p.append("seasons[]", String(seasonYear));
     p.append("team_ids[]", String(teamId));
     p.set("per_page", "100");
     if (cursor != null) p.set("cursor", String(cursor));
-
     const r = await fetch(`${BDL_API}/games?${p.toString()}`, { headers: bdlHeaders() });
-    if (!r.ok) break; // gracefully bail; model will fallback
+    if (!r.ok) break;
     const j = await r.json();
     out.push(...(j.data || []));
     cursor = j.meta?.next_cursor ?? null;
-    if (++guard > 8) break; // safety
+    if (++guard > 8) break;
   } while (cursor != null);
   return out;
 }
@@ -87,7 +85,6 @@ async function fetchTeamGamesForSeason(teamId, seasonYear) {
 function isFinalGame(g) {
   const hasScores = typeof g.home_score === "number" && typeof g.visitor_score === "number";
   const looksFinal = (g.status || "").toLowerCase().includes("final");
-  // Some feeds may not use "Final" but provide scores; accept either.
   return hasScores || looksFinal;
 }
 
@@ -101,15 +98,12 @@ async function getTeamFormFromPastGames(teamAbbrev, season) {
   if (teamFormCache.has(cacheKey)) return teamFormCache.get(cacheKey);
 
   const prevSeason = (Number(season) || new Date().getFullYear()) - 1;
-
   const [curr, prev] = await Promise.all([
     fetchTeamGamesForSeason(id, season),
     fetchTeamGamesForSeason(id, prevSeason)
   ]);
 
-  // Recent ~10 finals from both seasons combined.
   const finals = [...curr, ...prev].filter(isFinalGame).slice(-10);
-
   let pts = 0, opp = 0, n = 0;
   for (const g of finals) {
     const isHome = String(g.home_team?.id) === String(id) || g.home_team?.abbreviation === teamAbbrev;
@@ -120,23 +114,95 @@ async function getTeamFormFromPastGames(teamAbbrev, season) {
     const oppPts  = isHome ? vs : hs;
     pts += teamPts; opp += oppPts; n++;
   }
-
   const form = { ppg: n ? pts/n : null, oppg: n ? opp/n : null };
   teamFormCache.set(cacheKey, form);
   return form;
 }
 
 // Logistic transform: margin (in points) → probability [0..1].
-// scale≈7 → ~7 points ≈ 70% win probability.
 function probFromMargin(margin, scale = 7) {
   return 1 / (1 + Math.exp(-margin / scale));
 }
 
-/* ---------- Component ---------- */
+/* ---------- Small subcomponents ---------- */
+function DayPill({ d, selected, count, onClick }) {
+  const dow = d.toLocaleDateString(undefined,{ weekday:'short' });
+  const day = d.getDate();
+  const isToday = dateKey(new Date()) === dateKey(d);
+
+  return (
+    <Button
+      onClick={onClick}
+      variant={selected ? "contained" : "outlined"}
+      size="large"
+      aria-label={`${dow} ${day}, ${count||0} games`}
+      sx={{
+        borderRadius: 1,
+        minWidth: 92,
+        height: 80,
+        px: 1.1,
+        py: 0.75,
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+        bgcolor: selected ? 'primary.main' : 'background.paper',
+        color: selected ? 'primary.contrastText' : 'text.primary',
+        borderColor: selected ? 'primary.main' : 'divider',
+        boxShadow: selected ? 2 : 0
+      }}
+    >
+      <Typography variant="caption" sx={{ opacity: 0.85, lineHeight: 1 }}>
+        {dow}{isToday && !selected ? ' •' : ''}
+      </Typography>
+      <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1, mt: 0.25 }}>
+        {String(day).padStart(2,'0')}
+      </Typography>
+      <Chip
+        size="small"
+        label={count ? `${count}` : '0'}
+        color={count ? 'secondary' : 'default'}
+        variant={selected ? 'filled' : 'outlined'}
+        sx={{ mt: 0.9, height: 20, borderRadius: 0.75, '& .MuiChip-label': { px: .8, fontSize: 11, fontWeight: 700 } }}
+      />
+    </Button>
+  );
+}
+
+function GameRow({ g, onClick }) {
+  return (
+    <Card variant="outlined" sx={{ borderRadius:1 }}>
+      <ListItemButton onClick={onClick} sx={{ borderRadius:1, '&:hover': { bgcolor: 'rgba(255,255,255,.06)' } }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ width:'100%' }}>
+          <Avatar sx={{ width:28, height:28, fontSize:12, bgcolor: TEAM_COLORS[g.home]||'primary.main', color:'primary.contrastText' }}>
+            {g.home}
+          </Avatar>
+
+          <Box sx={{ flex:'1 1 auto', minWidth:0 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                color:'rgba(255,255,255,.95)'
+              }}
+            >
+              {g.away} @ {g.home}
+            </Typography>
+            <Typography variant="caption" sx={{ opacity:.8 }}>
+              {fmtTime(g.kickoff)}
+            </Typography>
+          </Box>
+
+          <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+        </Stack>
+      </ListItemButton>
+    </Card>
+  );
+}
+
+/* ---------- Main Component ---------- */
 export default function AllGamesCalendarNFL(){
   const [data, setData] = useState(null);      // { "YYYY-MM-DD": Game[] }
-  const [cursor, setCursor] = useState(()=> startOfWeek(new Date()));
-  const [selected, setSelected] = useState(null);
+  const [cursor, setCursor] = useState(()=> startOfWeek(new Date())); // week start
+  const [selectedDate, setSelectedDate] = useState(()=> new Date());
+  const [selected, setSelected] = useState(null); // { g, d }
 
   // probability state
   const [prob, setProb] = useState(null);       // { home, away } or null
@@ -145,13 +211,9 @@ export default function AllGamesCalendarNFL(){
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const stripRef = useRef(null);
 
-  const weekOf = useMemo(()=>({
-    from: startOfWeek(cursor),
-    to: addWeeks(startOfWeek(cursor),1)
-  }),[cursor]);
-
-  // Load schedule JSON
+  // Load schedule JSON once
   useEffect(()=> {
     let cancelled=false;
     (async()=>{
@@ -167,16 +229,31 @@ export default function AllGamesCalendarNFL(){
     return ()=>{cancelled=true};
   },[]);
 
-  const days = useMemo(()=>{
-    const out=[]; const d=new Date(weekOf.from);
-    while(d<weekOf.to){ out.push(new Date(d)); d.setDate(d.getDate()+1); }
-    return out;
-  },[weekOf]);
+  // Week days
+  const week = useMemo(()=>{
+    const start = startOfWeek(cursor);
+    return Array.from({length:7}, (_,i)=> addDays(start,i));
+  },[cursor]);
 
-  const gamesFor = (d)=> (data?.[keyFromDate(d)] || [])
-    .slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
+  // Bucket helper
+  const gamesFor = (d)=> (data?.[dateKey(d)] || []).slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
 
-  // When a game is opened, compute win probability using past games (free plan)
+  // Auto-select first day with games when week changes
+  useEffect(()=>{
+    const first = week.find(d => gamesFor(d).length > 0) || week[0];
+    setSelectedDate(first);
+    // scroll pill into view
+    setTimeout(()=>{
+      if (!stripRef.current) return;
+      const el = stripRef.current.querySelector(`[data-day="${dateKey(first)}"]`);
+      if (el) el.scrollIntoView({ inline:'center', behavior:'smooth', block:'nearest' });
+    }, 50);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor, data]);
+
+  const selectedGames = gamesFor(selectedDate);
+
+  // Compute win probability when a game is opened (same model as before)
   useEffect(()=>{
     let cancelled = false;
     async function computeProb() {
@@ -190,14 +267,12 @@ export default function AllGamesCalendarNFL(){
         const homeAbbr = g.home;
         const awayAbbr = g.away;
 
-        // Pull past-game forms from BDL (free) — this and previous season
         const [homeForm, awayForm] = await Promise.all([
           getTeamFormFromPastGames(homeAbbr, season),
           getTeamFormFromPastGames(awayAbbr, season)
         ]);
 
-        // Model: expected margin = (home O vs away D) - (away O vs home D) + HFA
-        const HFA = 2.0; // basic home-field advantage in points
+        const HFA = 2.0;
         let note = "Based on recent completed games (this & last season)";
         let margin;
 
@@ -236,88 +311,70 @@ export default function AllGamesCalendarNFL(){
     return ()=>{ cancelled = true; };
   }, [selected]);
 
-  /* ---------- UI subcomponent ---------- */
-  const DayCard = ({ d }) => {
-    const games = gamesFor(d);
-    return (
-      <Card
-        key={+d}
-        sx={{
-          minWidth: isMobile ? 260 : 'auto',
-          flex: isMobile ? "0 0 auto" : "initial",
-          backgroundColor:"background.paper",
-          border:1, borderColor:"rgba(255,255,255,.08)"
-        }}
-      >
-        <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:1 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight:600 }}>
-              {dayName(d)} {d.getDate()}
-            </Typography>
-            <Chip size="small" label={`${games.length} ${games.length===1?'Game':'Games'}`} />
-          </Stack>
-
-          <Stack gap={1}>
-            {games.length === 0 && (
-              <Typography variant="body2" sx={{ opacity:.7 }}>No games</Typography>
-            )}
-            {games.map((g, idx)=> (
-              <Button key={idx} onClick={()=> setSelected({ g, d })} fullWidth
-                sx={{
-                  justifyContent:"space-between", p:1.2,
-                  border:1, borderColor:"rgba(255,255,255,.08)",
-                  bgcolor:"rgba(255,255,255,.03)", textTransform:"none"
-                }}>
-                <Stack direction="row" alignItems="center" gap={1}>
-                  <Box sx={{ width:10, height:10, bgcolor: TEAM_COLORS[g.home]||"#999", borderRadius:"50%" }} />
-                  <Typography>{g.away} @ {g.home}</Typography>
-                </Stack>
-                <Stack direction="row" alignItems="center" gap={1}>
-                  <SportsFootballIcon fontSize="small"/>
-                  <Typography variant="body2">{fmtTime(g.kickoff)}</Typography>
-                </Stack>
-              </Button>
-            ))}
-          </Stack>
-        </CardContent>
-      </Card>
-    );
-  };
-
   /* ---------- Render ---------- */
+  const weekLabel = `Week of ${monthName(startOfWeek(cursor))} ${startOfWeek(cursor).getDate()}, ${startOfWeek(cursor).getFullYear()}`;
+
   return (
-    <Box>
-      <Stack direction="row" alignItems="center" gap={1} sx={{ mb:2 }}>
+    <Box sx={{ maxWidth: 720, mx:'auto', px:{ xs:1, sm:2 } }}>
+      {/* Sticky header with week nav */}
+      <Stack
+        direction="row"
+        alignItems="center"
+        gap={1}
+        sx={{ mb:1.5, position:'sticky', top:0, zIndex:2, bgcolor:'transparent', pt:.5 }}
+      >
         <IconButton onClick={()=> setCursor(addWeeks(cursor,-1))}><ChevronLeftIcon/></IconButton>
-        <Typography variant="h5" sx={{ letterSpacing:1, flex:1 }}>
-          Week of {monthName(weekOf.from)} {weekOf.from.getDate()}, {weekOf.from.getFullYear()}
+        <Typography variant={isMobile ? "h6":"h5"} sx={{ letterSpacing:1, flex:1 }}>
+          {weekLabel}
         </Typography>
+        <Tooltip title="Jump to current week">
+          <IconButton onClick={()=> setCursor(startOfWeek(new Date()))}><TodayIcon/></IconButton>
+        </Tooltip>
         <IconButton onClick={()=> setCursor(addWeeks(cursor,1))}><ChevronRightIcon/></IconButton>
       </Stack>
 
-      {data === null ? (
-        <Stack alignItems="center" sx={{ py:6, opacity:.8 }}>
-          <CircularProgress size={28} />
-          <Typography sx={{ mt:1 }}>Loading schedule…</Typography>
-        </Stack>
-      ) : (
-        <>
-          {isMobile ? (
-            <Box sx={{ display:"flex", gap:2, overflowX:"auto", pb:1, px:0.5, scrollSnapType:"x mandatory" }}>
-              {days.map((d)=> (
-                <Box key={+d} sx={{ scrollSnapAlign:"start" }}>
-                  <DayCard d={d} />
-                </Box>
-              ))}
+      {/* Horizontal day pills */}
+      <Box
+        ref={stripRef}
+        sx={{
+          display:'flex', gap:1, overflowX:'auto', pb:1,
+          "&::-webkit-scrollbar": { display:'none' }
+        }}
+      >
+        {week.map((d)=> {
+          const key = dateKey(d);
+          const count = gamesFor(d).length;
+          const selected = dateKey(selectedDate) === key;
+          return (
+            <Box key={key} data-day={key} sx={{ flex:'0 0 auto' }}>
+              <DayPill d={d} selected={selected} count={count} onClick={()=> setSelectedDate(d)} />
             </Box>
-          ) : (
-            <Stack direction="row" gap={2} sx={{ display:"grid", gridTemplateColumns:`repeat(${days.length}, 1fr)` }}>
-              {days.map((d)=> <DayCard key={+d} d={d} />)}
-            </Stack>
-          )}
-        </>
-      )}
+          );
+        })}
+      </Box>
 
+      {/* Day agenda */}
+      <Card variant="outlined" sx={{ borderRadius:1 }}>
+        <CardContent sx={{ p:1.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight:700, mb:1 }}>
+            {selectedDate.toLocaleDateString(undefined,{ weekday:'long', month:'short', day:'numeric' })}
+          </Typography>
+
+          {data === null ? (
+            <Stack alignItems="center" sx={{ py:3 }}><CircularProgress size={22} /></Stack>
+          ) : selectedGames.length ? (
+            <Stack spacing={1}>
+              {selectedGames.map((g, i)=>(
+                <GameRow key={i} g={g} onClick={()=> setSelected({ g, d: selectedDate })} />
+              ))}
+            </Stack>
+          ) : (
+            <Typography variant="body2" sx={{ opacity:0.7 }}>No games today.</Typography>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Drawer */}
       <Drawer anchor="right" open={!!selected} onClose={()=> setSelected(null)}>
         <Box sx={{ width: 360, p:2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:1 }}>
