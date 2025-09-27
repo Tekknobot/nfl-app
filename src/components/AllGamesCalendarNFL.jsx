@@ -49,6 +49,33 @@ const bdlHeaders = () => {
 let TEAMS_MAP_PROMISE = null; // Promise<Map<abbrev, id>>
 const teamFormCache = new Map(); // `${teamId}:${season}` -> {ppg,oppg}
 
+async function fetchLiveGameBDL({ dateISO, homeAbbr, awayAbbr }) {
+  const headers = bdlHeaders();
+  const u = new URL(`${BDL_API}/games`);
+  u.searchParams.append("dates[]", dateISO);      // YYYY-MM-DD
+  u.searchParams.set("per_page", "100");
+
+  const r = await fetch(u, { headers });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const data = Array.isArray(j?.data) ? j.data : [];
+
+  // Find the exact matchup for this date (compare abbreviations)
+  const match = data.find(g => {
+    const h = (g?.home_team?.abbreviation || "").toUpperCase();
+    const v = (g?.visitor_team?.abbreviation || "").toUpperCase();
+    return h === homeAbbr && v === awayAbbr;
+  });
+  if (!match) return null;
+
+  return {
+    status: match?.status || null,
+    homeScore: Number.isFinite(match?.home_team_score) ? match.home_team_score : null,
+    awayScore: Number.isFinite(match?.visitor_team_score) ? match.visitor_team_score : null
+  };
+}
+
+
 async function getTeamsMap() {
   if (!TEAMS_MAP_PROMISE) {
     const r = await fetch(`${BDL_API}/teams`, { headers: bdlHeaders() });
@@ -312,6 +339,49 @@ useEffect(() => {
     return ()=>{ cancelled = true; };
   }, [selected]);
 
+  // Live status / final score updater for the open game
+  useEffect(() => {
+    if (!selected?.g) return;
+
+    let cancelled = false;
+    let timer = null;
+
+    async function tick() {
+      const d = new Date(selected.g.kickoff);
+      const dateISO = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+      const live = await fetchLiveGameBDL({
+        dateISO,
+        homeAbbr: selected.g.home,
+        awayAbbr: selected.g.away
+      });
+      if (!live || cancelled) return;
+
+      // Push live status/score into the currently selected game object
+      setSelected(prev => {
+        if (!prev) return prev;
+        const g = { ...prev.g };
+        if (live.status) g.status = live.status;
+        if (live.homeScore != null) g.homeScore = live.homeScore;
+        if (live.awayScore != null) g.awayScore = live.awayScore;
+        return { ...prev, g };
+      });
+
+      // Stop if Final, otherwise poll again
+      if (!/final/i.test(live.status || "")) {
+        timer = setTimeout(tick, 60_000); // 60s
+      }
+    }
+
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [selected?.g?.home, selected?.g?.away, selected?.g?.kickoff]);
+
+
   /* ---------- Render ---------- */
   const weekLabel = `Week of ${monthName(startOfWeek(cursor))} ${startOfWeek(cursor).getDate()}, ${startOfWeek(cursor).getFullYear()}`;
 
@@ -394,6 +464,20 @@ useEffect(() => {
                 {selected.g.week && <Chip size="small" label={`Week ${selected.g.week}`} />}
                 {selected.g.tv && <Chip size="small" label={selected.g.tv} />}
               </Stack>
+
+              {/* Live / Final status + score (if available) */}
+              {(selected.g.homeScore != null && selected.g.awayScore != null) && (
+                <Stack direction="row" spacing={1} sx={{ mb:1 }}>
+                  <Chip
+                    size="small"
+                    color={/final/i.test(selected.g.status||"") ? "success" : "default"}
+                    label={/final/i.test(selected.g.status||"") ? "Final" : (selected.g.status || "In Progress")}
+                  />
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {selected.g.away} {selected.g.awayScore} — {selected.g.home} {selected.g.homeScore}
+                  </Typography>
+                </Stack>
+              )}
 
               {/* Win probability block */}
               <Box sx={{ my:2 }}>
