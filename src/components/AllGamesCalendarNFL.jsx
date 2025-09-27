@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box, Card, CardContent, Chip, Stack, Typography, Drawer, Divider,
-  List, ListItem, ListItemText, IconButton, Button, CircularProgress, useMediaQuery, LinearProgress, Tooltip
+  List, ListItem, ListItemText, IconButton, Button, CircularProgress,
+  useMediaQuery, LinearProgress
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
@@ -9,6 +10,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
 import { useTheme } from "@mui/material/styles";
 
+/* ---------- UI helpers ---------- */
 const TEAM_COLORS = {
   ARI:"#97233F", ATL:"#A71930", BAL:"#241773", BUF:"#00338D", CAR:"#0085CA",
   CHI:"#0B162A", CIN:"#FB4F14", CLE:"#311D00", DAL:"#041E42", DEN:"#FB4F14",
@@ -18,7 +20,6 @@ const TEAM_COLORS = {
   PHI:"#004C54", PIT:"#101820", SF:"#AA0000", SEA:"#002244", TB:"#D50A0A",
   TEN:"#0C2340", WSH:"#5A1414"
 };
-
 const dayName = d => d.toLocaleDateString(undefined,{weekday:"short"});
 const monthName = d => d.toLocaleDateString(undefined,{month:"long"});
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
@@ -34,110 +35,111 @@ function startOfWeek(d){
   return x;
 }
 
-/** ---------- BallDon'tLie helpers (free tier friendly) ---------- **/
-
+/* ---------- BallDon’tLie client (free-plan friendly) ---------- */
 const BDL_API = "https://api.balldontlie.io/nfl/v1";
-const BDL_HEADERS = () => {
+// REACT_APP_BDL_KEY must be set in .env (client). Header is literally Authorization: YOUR_KEY (no "Bearer").
+const bdlHeaders = () => {
   const key = process.env.REACT_APP_BDL_KEY?.trim();
   return key ? { Accept: "application/json", Authorization: key } : { Accept: "application/json" };
 };
 
-// cache results in-memory per page load
-const teamCache = new Map(); // key: `${abbrev}:${season}` -> { games:[...], ppg, oppg }
+// Cache for /teams and per-team forms.
+let TEAMS_MAP_PROMISE = null; // Promise<Map<abbrev, id>>
+const teamFormCache = new Map(); // `${teamId}:${season}` -> {ppg,oppg}
 
-/**
- * Fetch recent completed games for a team (current & previous season) and compute
- * average points scored/allowed. Uses only /games, so it stays on the free plan.
- */
-async function getTeamForm(abbrev, season) {
-  const cacheKey = `${abbrev}:${season}`;
-  if (teamCache.has(cacheKey)) return teamCache.get(cacheKey);
-
-  const headers = BDL_HEADERS();
-
-  // Helper to fetch one season worth of games for team (paginate by cursor)
-  async function fetchSeasonGames(seasonYear) {
-    const out = [];
-    let cursor = undefined;
-    let safety = 0;
-    do {
-      const params = new URLSearchParams();
-      params.append("seasons[]", String(seasonYear));
-      params.append("team_ids[]", abbrev);           // many APIs accept abbrev; if BDL expects team id, map here.
-      params.set("per_page", "100");
-      if (cursor != null) params.set("cursor", String(cursor));
-
-      const url = `${BDL_API}/games?${params.toString()}`;
-      const r = await fetch(url, { headers });
-      if (!r.ok) {
-        // If the team_ids[] filter wants numeric IDs instead of abbrev, this returns 4xx.
-        // We gracefully bail and return empty; probability will fall back to 50/50 + tiny HFA.
-        break;
-      }
-      const j = await r.json();
-      (j.data || []).forEach(g => out.push(g));
-      cursor = j.meta?.next_cursor ?? null;
-      if (++safety > 8) break; // safety guard
-    } while (cursor != null);
-    return out;
+async function getTeamsMap() {
+  if (!TEAMS_MAP_PROMISE) {
+    const r = await fetch(`${BDL_API}/teams`, { headers: bdlHeaders() });
+    if (!r.ok) throw new Error("Failed to load teams");
+    const j = await r.json();
+    const map = new Map();
+    for (const t of j.data || []) {
+      // Expect fields like { id, abbreviation, name }
+      if (t.abbreviation && t.id != null) map.set(t.abbreviation.toUpperCase(), String(t.id));
+    }
+    TEAMS_MAP_PROMISE = Promise.resolve(map);
   }
+  return TEAMS_MAP_PROMISE;
+}
 
-  // Pull this season and previous season (covers early year with few games)
+async function fetchTeamGamesForSeason(teamId, seasonYear) {
+  // Pull up to 100/game page via cursor; we keep it small via guard to avoid excessive calls.
+  const out = [];
+  let cursor;
+  let guard = 0;
+  do {
+    const p = new URLSearchParams();
+    p.append("seasons[]", String(seasonYear));
+    p.append("team_ids[]", String(teamId));
+    p.set("per_page", "100");
+    if (cursor != null) p.set("cursor", String(cursor));
+
+    const r = await fetch(`${BDL_API}/games?${p.toString()}`, { headers: bdlHeaders() });
+    if (!r.ok) break; // gracefully bail; model will fallback
+    const j = await r.json();
+    out.push(...(j.data || []));
+    cursor = j.meta?.next_cursor ?? null;
+    if (++guard > 8) break; // safety
+  } while (cursor != null);
+  return out;
+}
+
+function isFinalGame(g) {
+  const hasScores = typeof g.home_score === "number" && typeof g.visitor_score === "number";
+  const looksFinal = (g.status || "").toLowerCase().includes("final");
+  // Some feeds may not use "Final" but provide scores; accept either.
+  return hasScores || looksFinal;
+}
+
+/** Compute a team’s simple form (PPG/OPPG) from recent finals across season & previous season. */
+async function getTeamFormFromPastGames(teamAbbrev, season) {
+  const teams = await getTeamsMap();
+  const id = teams.get(String(teamAbbrev).toUpperCase());
+  if (!id) return { ppg: null, oppg: null };
+
+  const cacheKey = `${id}:${season}`;
+  if (teamFormCache.has(cacheKey)) return teamFormCache.get(cacheKey);
+
   const prevSeason = (Number(season) || new Date().getFullYear()) - 1;
+
   const [curr, prev] = await Promise.all([
-    fetchSeasonGames(season),
-    fetchSeasonGames(prevSeason)
+    fetchTeamGamesForSeason(id, season),
+    fetchTeamGamesForSeason(id, prevSeason)
   ]);
 
-  // Keep last ~10 completed games
-  const completed = [...curr, ...prev]
-    .filter(g => {
-      // Try to detect completed games. Many feeds mark as "Final" or include scores.
-      const hasScores = typeof g.home_score === "number" && typeof g.visitor_score === "number";
-      const looksFinal = (g.status || "").toLowerCase().includes("final");
-      return hasScores || looksFinal;
-    })
-    .slice(-10);
+  // Recent ~10 finals from both seasons combined.
+  const finals = [...curr, ...prev].filter(isFinalGame).slice(-10);
 
-  // Compute ppg / oppg relative to the team whether it was home or away
   let pts = 0, opp = 0, n = 0;
-  for (const g of completed) {
-    const isHomeTeam = (g.home_team?.abbreviation === abbrev) || (g.home_team?.id === abbrev);
+  for (const g of finals) {
+    const isHome = String(g.home_team?.id) === String(id) || g.home_team?.abbreviation === teamAbbrev;
     const hs = Number(g.home_score ?? NaN);
     const vs = Number(g.visitor_score ?? NaN);
     if (Number.isNaN(hs) || Number.isNaN(vs)) continue;
-    const teamPts = isHomeTeam ? hs : vs;
-    const oppPts  = isHomeTeam ? vs : hs;
+    const teamPts = isHome ? hs : vs;
+    const oppPts  = isHome ? vs : hs;
     pts += teamPts; opp += oppPts; n++;
   }
 
-  const form = {
-    games: completed,
-    ppg: n ? pts / n : null,
-    oppg: n ? opp / n : null
-  };
-  teamCache.set(cacheKey, form);
+  const form = { ppg: n ? pts/n : null, oppg: n ? opp/n : null };
+  teamFormCache.set(cacheKey, form);
   return form;
 }
 
-/**
- * Simple logistic win probability model:
- *   margin = (home_offense - away_defense) + HFA
- *   prob_home = 1 / (1 + exp(-margin / scale))
- *
- * scale ~= 7 → ~7 points ≈ 70% win
- */
+// Logistic transform: margin (in points) → probability [0..1].
+// scale≈7 → ~7 points ≈ 70% win probability.
 function probFromMargin(margin, scale = 7) {
   return 1 / (1 + Math.exp(-margin / scale));
 }
 
-/** ---------- Component ---------- **/
-
+/* ---------- Component ---------- */
 export default function AllGamesCalendarNFL(){
   const [data, setData] = useState(null);      // { "YYYY-MM-DD": Game[] }
   const [cursor, setCursor] = useState(()=> startOfWeek(new Date()));
   const [selected, setSelected] = useState(null);
-  const [prob, setProb] = useState(null);
+
+  // probability state
+  const [prob, setProb] = useState(null);       // { home, away } or null
   const [probLoading, setProbLoading] = useState(false);
   const [probNote, setProbNote] = useState("");
 
@@ -149,6 +151,7 @@ export default function AllGamesCalendarNFL(){
     to: addWeeks(startOfWeek(cursor),1)
   }),[cursor]);
 
+  // Load schedule JSON
   useEffect(()=> {
     let cancelled=false;
     (async()=>{
@@ -173,10 +176,10 @@ export default function AllGamesCalendarNFL(){
   const gamesFor = (d)=> (data?.[keyFromDate(d)] || [])
     .slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
 
-  // Compute win probability when a game is opened
+  // When a game is opened, compute win probability using past games (free plan)
   useEffect(()=>{
     let cancelled = false;
-    async function run(){
+    async function computeProb() {
       setProb(null);
       setProbNote("");
       if (!selected?.g) return;
@@ -184,35 +187,35 @@ export default function AllGamesCalendarNFL(){
       try {
         const g = selected.g;
         const season = new Date(g.kickoff).getFullYear();
-        const home = g.home;
-        const away = g.away;
+        const homeAbbr = g.home;
+        const awayAbbr = g.away;
 
-        // Fetch recent team forms from BDL
+        // Pull past-game forms from BDL (free) — this and previous season
         const [homeForm, awayForm] = await Promise.all([
-          getTeamForm(home, season),
-          getTeamForm(away, season)
+          getTeamFormFromPastGames(homeAbbr, season),
+          getTeamFormFromPastGames(awayAbbr, season)
         ]);
 
-        // If we couldn't get any stats, fall back to tiny home advantage only
-        const HFA = 2.0; // ~2 points home-field advantage
-        let note = "Based on recent scoring averages";
+        // Model: expected margin = (home O vs away D) - (away O vs home D) + HFA
+        const HFA = 2.0; // basic home-field advantage in points
+        let note = "Based on recent completed games (this & last season)";
         let margin;
 
-        if (homeForm.ppg != null && awayForm.oppg != null && awayForm.ppg != null && homeForm.oppg != null) {
+        if (
+          homeForm.ppg != null && homeForm.oppg != null &&
+          awayForm.ppg != null && awayForm.oppg != null
+        ) {
           const homeOff = homeForm.ppg;
           const awayDef = awayForm.oppg;
           const awayOff = awayForm.ppg;
           const homeDef = homeForm.oppg;
-
-          // expected margin = (home O vs away D) - (away O vs home D) + HFA
           margin = (homeOff - awayDef) - (awayOff - homeDef) + HFA;
         } else if (homeForm.ppg != null && awayForm.ppg != null) {
-          // use ppg only
           margin = (homeForm.ppg - awayForm.ppg) + HFA;
-          note = "Based on recent points per game";
+          note = "Based on recent points per game (limited finals available)";
         } else {
           margin = HFA;
-          note = "Insufficient recent data; home advantage only";
+          note = "Insufficient past-game data; home advantage only";
         }
 
         const pHome = probFromMargin(margin, 7);
@@ -223,16 +226,17 @@ export default function AllGamesCalendarNFL(){
       } catch (e) {
         if (!cancelled) {
           setProb(null);
-          setProbNote("Could not compute probability (rate limit or data unavailable).");
+          setProbNote("Could not compute probability (data unavailable or rate-limited).");
         }
       } finally {
         if (!cancelled) setProbLoading(false);
       }
     }
-    run();
+    computeProb();
     return ()=>{ cancelled = true; };
   }, [selected]);
 
+  /* ---------- UI subcomponent ---------- */
   const DayCard = ({ d }) => {
     const games = gamesFor(d);
     return (
@@ -280,6 +284,7 @@ export default function AllGamesCalendarNFL(){
     );
   };
 
+  /* ---------- Render ---------- */
   return (
     <Box>
       <Stack direction="row" alignItems="center" gap={1} sx={{ mb:2 }}>
@@ -334,8 +339,8 @@ export default function AllGamesCalendarNFL(){
 
               {/* Win probability block */}
               <Box sx={{ my:2 }}>
-                <Typography variant="subtitle2" sx={{ mb:0.5 }}>
-                  Win probability (BallDon’tLie, simple model)
+                <Typography variant="subtitle2" sx={{ mb:0.75 }}>
+                  Win probability (simple model)
                 </Typography>
 
                 {probLoading && <LinearProgress sx={{ height:6, borderRadius:1 }} />}
@@ -361,7 +366,7 @@ export default function AllGamesCalendarNFL(){
 
                 {!probLoading && prob === null && (
                   <Typography variant="body2" sx={{ opacity:.8 }}>
-                    Win probability unavailable (rate limit or not enough recent games).
+                    Win probability unavailable (data not ready or rate-limited).
                   </Typography>
                 )}
               </Box>

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Box, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import Header from "./components/Header";
 import AllGamesCalendarNFL from "./components/AllGamesCalendarNFL";
+import About from "./components/About";
 
 const theme = createTheme({
   palette: {
@@ -28,6 +29,7 @@ export default function App(){
           <Routes>
             <Route path="/" element={<Navigate to="/weeks" replace />} />
             <Route path="/weeks" element={<AllGamesCalendarNFL />} />
+            <Route path="/about" element={<About />} />
             <Route path="*" element={<Navigate to="/weeks" replace />} />
           </Routes>
         </Box>

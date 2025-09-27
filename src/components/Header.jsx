@@ -2,6 +2,7 @@ import React from "react";
 import { AppBar, Toolbar, Typography, Box } from "@mui/material";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { Link, useLocation } from "react-router-dom";
 
 const NavLink = ({ to, icon: Icon, children }) => {
@@ -30,10 +31,12 @@ export default function Header(){
       sx={{ backdropFilter:"blur(6px)", borderBottom:1, borderColor:"rgba(255,255,255,.1)" }}>
       <Toolbar sx={{ display:"flex", gap:2 }}>
         <SportsFootballIcon />
+        {/* App name updated to SNAPP */}
         <Typography variant="h5" sx={{ flex:1, fontWeight:600, letterSpacing:2 }}>
-          NFL Schedule
+          SNAPP
         </Typography>
         <NavLink to="/weeks" icon={CalendarMonthIcon}>Weeks</NavLink>
+        <NavLink to="/about" icon={InfoOutlinedIcon}>About</NavLink>
       </Toolbar>
     </AppBar>
   );
