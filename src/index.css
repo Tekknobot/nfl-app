@@ -1,18 +1,13 @@
 :root{
-  --turf:#0b6b3a;      /* deep green */
-  --turf-dark:#084d2a; /* darker stripe */
+  /* darker turf palette */
+  --turf:#052a17;      /* background main */
+  --turf-paper:#0a3a22;/* cards/paper */
 }
+
 html,body,#root{height:100%;}
 body{
   margin:0;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      var(--turf) 0px,
-      var(--turf) 38px,
-      var(--turf-dark) 38px,
-      var(--turf-dark) 40px
-    );
+  background-color: var(--turf); /* ← solid, no gridlines */
   color:#fff;
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
 }
