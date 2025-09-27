@@ -33,7 +33,7 @@ export default function Header(){
         <SportsFootballIcon />
         {/* App name updated to SNAPP */}
         <Typography variant="h5" sx={{ flex:1, fontWeight:600, letterSpacing:1 }}>
-          
+          Calendar
         </Typography>
         <NavLink to="/weeks" icon={CalendarMonthIcon}>Weeks</NavLink>
         <NavLink to="/about" icon={InfoOutlinedIcon}>About</NavLink>
