@@ -32,8 +32,8 @@ export default function Header(){
       <Toolbar sx={{ display:"flex", gap:2 }}>
         <SportsFootballIcon />
         {/* App name updated to SNAPP */}
-        <Typography variant="h5" sx={{ flex:1, fontWeight:600, letterSpacing:2 }}>
-          NFL
+        <Typography variant="h4" sx={{ flex:1, fontWeight:600, letterSpacing:2 }}>
+          SNAPPCOUNT
         </Typography>
         <NavLink to="/weeks" icon={CalendarMonthIcon}>Weeks</NavLink>
         <NavLink to="/about" icon={InfoOutlinedIcon}>About</NavLink>
