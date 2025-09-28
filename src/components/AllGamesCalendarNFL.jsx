@@ -218,31 +218,58 @@ function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick
     </Button>
   );
 }
+// Final-state detection with extra fallbacks
+function isGameFinal(g) {
+  if (!g) return false;
+  if (g.is_final === true) return true;
+  if (String(g.status_code || "").toLowerCase() === "completed") return true;
+  const s = String(g.status || "").toLowerCase();
+  return /(final|completed|full\s*time|^ft$|ended|complete)/i.test(s);
+}
+
+// Coerce anything like "27", "27 (OT)" → 27
+function scoreNum(v) {
+  if (v == null) return null;
+  const n = typeof v === "string" ? Number(v.replace(/[^\d.-]/g, "")) : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Try many shapes: camel/snake, nested, totals, and combined strings like "27–24"
+function extractScores(g) {
+  const tryPairs = [
+    [g?.homeScore, g?.awayScore],
+    [g?.home_score, g?.away_score],
+    [g?.home_points, g?.away_points],
+    [g?.home_final, g?.away_final],
+    [g?.home, g?.away], // some feeds put numbers in these after final (rare)
+    [g?.score?.home, g?.score?.away],
+    [g?.boxscore?.home_total, g?.boxscore?.away_total],
+    [g?.totals?.home, g?.totals?.away],
+  ];
+
+  for (const [h, a] of tryPairs) {
+    const H = scoreNum(h), A = scoreNum(a);
+    if (H !== null && A !== null) return { home: H, away: A, have: true };
+  }
+
+  // Combined strings: "27-24", "27 – 24", etc. Assume format "away-home" is common; flip if it seems wrong
+  const combined = g?.final || g?.result || g?.scoreline || g?.score;
+  if (typeof combined === "string") {
+    const m = combined.match(/(\d+)\s*[–-]\s*(\d+)/); // en dash or hyphen
+    if (m) {
+      const A = scoreNum(m[1]);
+      const H = scoreNum(m[2]);
+      if (H !== null && A !== null) return { home: H, away: A, have: true };
+    }
+  }
+
+  return { home: null, away: null, have: false };
+}
 
 function GameRow({ g, onClick }) {
-  // --- robust numeric helpers ---
-  const toNum = (v) => {
-    if (v === null || v === undefined) return null;
-    // strip anything non-numeric (e.g., "27 (OT)")
-    const num = typeof v === "string" ? Number(v.replace(/[^\d.-]/g, "")) : Number(v);
-    return Number.isFinite(num) ? num : null;
-  };
+  const { home: homeScore, away: awayScore, have: haveScores } = extractScores(g);
+  const isFinal = isGameFinal(g);
 
-  // normalize + coerce to numbers from multiple possible field names
-  const homeScore =
-    toNum(g.homeScore) ??
-    toNum(g.home_score) ??
-    toNum(g.home_points) ??
-    toNum(g?.score?.home);
-
-  const awayScore =
-    toNum(g.awayScore) ??
-    toNum(g.away_score) ??
-    toNum(g.visitor_score) ??
-    toNum(g?.score?.away);
-
-  const isFinal = /final/i.test(g.status || "");
-  const haveScores = homeScore !== null && awayScore !== null;
   const winner =
     haveScores && homeScore !== awayScore
       ? (homeScore > awayScore ? "home" : "away")
@@ -262,6 +289,7 @@ function GameRow({ g, onClick }) {
             {g.home}
           </Avatar>
 
+          {/* Middle text */}
           <Box sx={{ flex: "1 1 auto", minWidth: 0 }}>
             <Typography
               variant="body2"
@@ -269,6 +297,8 @@ function GameRow({ g, onClick }) {
             >
               {g.away} @ {g.home}
             </Typography>
+
+            {/* Only show kickoff/status when not final */}
             {!isFinal && (
               <Typography variant="caption" sx={{ opacity: .8, display: "block" }}>
                 {fmtTime(g.kickoff)}{g.status ? ` · ${g.status}` : ""}
@@ -276,6 +306,7 @@ function GameRow({ g, onClick }) {
             )}
           </Box>
 
+          {/* Right side: Final/In-Progress + stacked score (if any) */}
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
             {isFinal ? (
               <Chip size="small" color="success" label="Final" />
@@ -283,22 +314,23 @@ function GameRow({ g, onClick }) {
               <Chip size="small" label={g.status || "In Progress"} />
             ) : null}
 
-            {haveScores ? (
+            {(haveScores || isFinal) && (
               <Box
                 sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.15, minWidth: 96 }}
                 aria-label={isFinal ? "Final score" : "Live score"}
               >
                 <Typography variant="body2" sx={{ fontWeight: winner === "away" ? 800 : 700 }}>
-                  {g.away} {awayScore}
+                  {g.away} {awayScore ?? "—"}
                 </Typography>
                 <Typography variant="body2" sx={{ fontWeight: winner === "home" ? 800 : 700, opacity: winner === "home" ? 1 : 0.95 }}>
-                  {g.home} {homeScore}
+                  {g.home} {homeScore ?? "—"}
                 </Typography>
               </Box>
-            ) : (
-              !isFinal && (
-                <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
-              )
+            )}
+
+            {/* If not final and no scores yet, show the details chip */}
+            {!isFinal && !haveScores && (
+              <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
             )}
           </Stack>
         </Stack>
