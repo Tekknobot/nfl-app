@@ -220,57 +220,73 @@ function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick
 }
 
 function GameRow({ g, onClick }) {
+  // normalize + detect final
+  const homeScore = Number.isFinite(g.homeScore) ? g.homeScore : (
+    Number.isFinite(g.home_score) ? g.home_score : null
+  );
+  const awayScore = Number.isFinite(g.awayScore) ? g.awayScore : (
+    Number.isFinite(g.visitor_score) ? g.visitor_score : null
+  );
   const isFinal = /final/i.test(g.status || "");
-  const hasScore = (g.homeScore != null && g.awayScore != null);
-  const hasStatus = Boolean(g.status);
+  const haveScores = Number.isFinite(homeScore) && Number.isFinite(awayScore);
+  const winner =
+    haveScores && (homeScore !== awayScore)
+      ? (homeScore > awayScore ? "home" : "away")
+      : null;
 
   return (
     <Card
       variant="outlined"
       sx={{
-        borderRadius:1,
-        ...(isFinal ? { bgcolor: 'rgba(76,175,80,0.06)', borderColor: 'rgba(76,175,80,0.35)' } : {})
+        borderRadius: 1,
+        ...(isFinal ? { bgcolor: "rgba(76,175,80,0.06)", borderColor: "rgba(76,175,80,0.35)" } : {})
       }}
     >
-      <ListItemButton onClick={onClick} sx={{ borderRadius:1, '&:hover': { bgcolor: 'rgba(255,255,255,.06)' } }}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ width:'100%' }}>
-          <Avatar sx={{ width:28, height:28, fontSize:12, bgcolor: TEAM_COLORS[g.home]||'primary.main', color:'primary.contrastText' }}>
+      <ListItemButton onClick={onClick} sx={{ borderRadius: 1, "&:hover": { bgcolor: "rgba(255,255,255,.06)" } }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ width: "100%" }}>
+          <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: TEAM_COLORS[g.home] || "primary.main", color: "primary.contrastText" }}>
             {g.home}
           </Avatar>
 
           {/* Middle text */}
-          <Box sx={{ flex:'1 1 auto', minWidth:0 }}>
+          <Box sx={{ flex: "1 1 auto", minWidth: 0 }}>
             <Typography
               variant="body2"
-              sx={{
-                fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                color:'rgba(255,255,255,.95)'
-              }}
+              sx={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(255,255,255,.95)" }}
             >
               {g.away} @ {g.home}
             </Typography>
-            <Typography variant="caption" sx={{ opacity:.8, display:'block' }}>
-              {fmtTime(g.kickoff)}
-            </Typography>
+            {!isFinal && (
+              <Typography variant="caption" sx={{ opacity: .8, display: "block" }}>
+                {fmtTime(g.kickoff)}{g.status ? ` · ${g.status}` : ""}
+              </Typography>
+            )}
           </Box>
 
-          {/* Right-side: status + score (if present) */}
-          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: 'center' }}>
-            {hasStatus && (
-              <Chip
-                size="small"
-                color={isFinal ? "success" : "default"}
-                label={isFinal ? "Final" : g.status}
-              />
-            )}
-            {hasScore ? (
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {g.away} {g.awayScore} — {g.home} {g.homeScore}
-              </Typography>
+          {/* Right side: Final + score (or live status) */}
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+            {isFinal ? (
+              <>
+                <Chip size="small" color="success" label="Final" />
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  <span style={{ fontWeight: winner === "away" ? 800 : 700 }}>
+                    {g.away} {haveScores ? awayScore : "—"}
+                  </span>{" "}
+                  —{" "}
+                  <span style={{ fontWeight: winner === "home" ? 800 : 700 }}>
+                    {g.home} {haveScores ? homeScore : "—"}
+                  </span>
+                </Typography>
+              </>
+            ) : haveScores ? (
+              <>
+                <Chip size="small" label={g.status || "In Progress"} />
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {g.away} {awayScore} — {g.home} {homeScore}
+                </Typography>
+              </>
             ) : (
-              !hasStatus && (
-                <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
-              )
+              <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
             )}
           </Stack>
         </Stack>
