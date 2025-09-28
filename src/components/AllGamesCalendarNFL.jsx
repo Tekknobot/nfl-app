@@ -84,23 +84,19 @@ async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
 
   const headers = { Accept: "application/json", Authorization: key };
 
-  // A small set of candidates. If your pro docs specify an exact path/params,
-  // replace this with the canonical one (e.g., /odds?date=YYYY-MM-DD).
+  // If your pro docs specify a canonical endpoint, use that instead.
   const candidates = [
     { path: "/odds", params: { date: dateISO } },
     { path: "/games", params: { "dates[]": dateISO, include: "odds" } },
   ];
 
-  // Utility to build URL with params
   const buildUrl = (base, path, params) => {
     const u = new URL(`${base}${path}`);
     Object.entries(params || {}).forEach(([k, v]) => u.searchParams.append(k, v));
-    // allow up to 100/page if supported
     if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
     return u.toString();
   };
 
-  // Try each endpoint candidate
   for (const c of candidates) {
     try {
       const url = buildUrl(BDL_API, c.path, c.params);
@@ -108,12 +104,9 @@ async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
       if (!r.ok) continue;
       const j = await r.json();
 
-      // Normalize list from common shapes
       const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
-      
-      // Find matching event by team abbreviations
+
       const row = list.find(item => {
-        // common shapes for home/away team abbrev fields
         const h =
           item?.home_team?.abbreviation ??
           item?.homeTeam?.abbreviation ??
@@ -130,23 +123,67 @@ async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
       });
       if (!row) continue;
 
-      // Pull moneylines from the row
-      // Try common shapes (adjust to your pro docs if you know them)
-      const markets =
-        row?.odds ||
-        row?.markets ||
-        row?.book || // some APIs wrap per-book
-        null;
+      const markets = row?.odds || row?.markets || row?.book || null;
 
-      // Helper to read ML from a market/book shape
       const readML = (obj, side /* "home"|"away" */) => {
         if (!obj) return null;
-        // common field names
         const keys = [
           `${side}_moneyline`, `${side}_ml`, `${side}_price`,
           side === "home" ? "ml_home" : "ml_away",
           side === "home" ? "moneyline_home" : "moneyline_away",
         ];
+        for (const k of keys) {
+          const v = obj?.[k];
+          if (v != null) return Number(v);
+        }
+        return null;
+      };
+
+      let mlHome = null, mlAway = null;
+
+      if (Array.isArray(markets)) {
+        const mlMarket =
+          markets.find(m =>
+            /moneyline/i.test(m?.key || m?.market || "") ||
+            (m?.type && /moneyline/i.test(m.type))
+          ) || markets[0];
+
+        const offer =
+          (Array.isArray(mlMarket?.offers) && mlMarket.offers[0]) ||
+          (Array.isArray(mlMarket?.books) && mlMarket.books[0]) ||
+          mlMarket;
+
+        mlHome = readML(offer, "home");
+        mlAway = readML(offer, "away");
+      } else if (markets) {
+        mlHome = readML(markets, "home");
+        mlAway = readML(markets, "away");
+      } else {
+        const flatRead = (container, side) => {
+          const keys = [
+            `${side}_moneyline`, `${side}_ml`, `${side}_price`,
+            side === "home" ? "ml_home" : "ml_away",
+            side === "home" ? "moneyline_home" : "moneyline_away",
+          ];
+          for (const k of keys) {
+            const v = container?.[k];
+            if (v != null) return Number(v);
+          }
+          return null;
+        };
+        mlHome = flatRead(row, "home");
+        mlAway = flatRead(row, "away");
+      }
+
+      if (mlHome == null || mlAway == null) continue;
+      return { mlHome: Number(mlHome), mlAway: Number(mlAway) };
+    } catch {
+      continue; // try next candidate
+    }
+  }
+  return null;
+}
+
 
 /** Returns { home, away, note }, preferring BDL Pro moneylines (de-vigged),
  *  and falling back to the simple form model you already have.
