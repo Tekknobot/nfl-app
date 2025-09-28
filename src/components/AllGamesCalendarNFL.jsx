@@ -220,16 +220,31 @@ function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick
 }
 
 function GameRow({ g, onClick }) {
-  // normalize + detect final
-  const homeScore = Number.isFinite(g.homeScore) ? g.homeScore :
-                    Number.isFinite(g.home_score) ? g.home_score : null;
-  const awayScore = Number.isFinite(g.awayScore) ? g.awayScore :
-                    Number.isFinite(g.visitor_score) ? g.visitor_score : null;
+  // --- robust numeric helpers ---
+  const toNum = (v) => {
+    if (v === null || v === undefined) return null;
+    // strip anything non-numeric (e.g., "27 (OT)")
+    const num = typeof v === "string" ? Number(v.replace(/[^\d.-]/g, "")) : Number(v);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  // normalize + coerce to numbers from multiple possible field names
+  const homeScore =
+    toNum(g.homeScore) ??
+    toNum(g.home_score) ??
+    toNum(g.home_points) ??
+    toNum(g?.score?.home);
+
+  const awayScore =
+    toNum(g.awayScore) ??
+    toNum(g.away_score) ??
+    toNum(g.visitor_score) ??
+    toNum(g?.score?.away);
 
   const isFinal = /final/i.test(g.status || "");
-  const haveScores = Number.isFinite(homeScore) && Number.isFinite(awayScore);
+  const haveScores = homeScore !== null && awayScore !== null;
   const winner =
-    haveScores && (homeScore !== awayScore)
+    haveScores && homeScore !== awayScore
       ? (homeScore > awayScore ? "home" : "away")
       : null;
 
@@ -247,7 +262,6 @@ function GameRow({ g, onClick }) {
             {g.home}
           </Avatar>
 
-          {/* Middle text */}
           <Box sx={{ flex: "1 1 auto", minWidth: 0 }}>
             <Typography
               variant="body2"
@@ -255,8 +269,6 @@ function GameRow({ g, onClick }) {
             >
               {g.away} @ {g.home}
             </Typography>
-
-            {/* When not final, show kickoff + live status under the title */}
             {!isFinal && (
               <Typography variant="caption" sx={{ opacity: .8, display: "block" }}>
                 {fmtTime(g.kickoff)}{g.status ? ` · ${g.status}` : ""}
@@ -264,7 +276,6 @@ function GameRow({ g, onClick }) {
             )}
           </Box>
 
-          {/* Right side: status chip + STACKED score */}
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
             {isFinal ? (
               <Chip size="small" color="success" label="Final" />
@@ -274,25 +285,13 @@ function GameRow({ g, onClick }) {
 
             {haveScores ? (
               <Box
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  lineHeight: 1.15,
-                  minWidth: 96
-                }}
+                sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.15, minWidth: 96 }}
                 aria-label={isFinal ? "Final score" : "Live score"}
               >
-                <Typography
-                  variant="body2"
-                  sx={{ fontWeight: winner === "away" ? 800 : 700 }}
-                >
+                <Typography variant="body2" sx={{ fontWeight: winner === "away" ? 800 : 700 }}>
                   {g.away} {awayScore}
                 </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{ fontWeight: winner === "home" ? 800 : 700, opacity: winner === "home" ? 1 : 0.95 }}
-                >
+                <Typography variant="body2" sx={{ fontWeight: winner === "home" ? 800 : 700, opacity: winner === "home" ? 1 : 0.95 }}>
                   {g.home} {homeScore}
                 </Typography>
               </Box>
