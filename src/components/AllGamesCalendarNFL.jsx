@@ -263,30 +263,44 @@ function GameRow({ g, onClick }) {
             )}
           </Box>
 
-          {/* Right side: Final + score (or live status) */}
+          {/* Right side: stacked score */}
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+            {/* Status chip */}
             {isFinal ? (
-              <>
-                <Chip size="small" color="success" label="Final" />
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  <span style={{ fontWeight: winner === "away" ? 800 : 700 }}>
-                    {g.away} {haveScores ? awayScore : "—"}
-                  </span>{" "}
-                  —{" "}
-                  <span style={{ fontWeight: winner === "home" ? 800 : 700 }}>
-                    {g.home} {haveScores ? homeScore : "—"}
-                  </span>
-                </Typography>
-              </>
+              <Chip size="small" color="success" label="Final" />
             ) : haveScores ? (
-              <>
-                <Chip size="small" label={g.status || "In Progress"} />
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {g.away} {awayScore} — {g.home} {homeScore}
+              <Chip size="small" label={g.status || "In Progress"} />
+            ) : null}
+
+            {/* Two-line score stack (right-aligned) */}
+            {haveScores ? (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  lineHeight: 1.15,
+                  minWidth: 96
+                }}
+                aria-label={isFinal ? "Final score" : "Live score"}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: winner === "away" ? 800 : 700 }}
+                >
+                  {g.away} {awayScore}
                 </Typography>
-              </>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: winner === "home" ? 800 : 700, opacity: winner === "home" ? 1 : 0.95 }}
+                >
+                  {g.home} {homeScore}
+                </Typography>
+              </Box>
             ) : (
-              <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+              !isFinal && (
+                <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+              )
             )}
           </Stack>
         </Stack>
@@ -294,6 +308,7 @@ function GameRow({ g, onClick }) {
     </Card>
   );
 }
+
 
 /* ---------- Main Component ---------- */
 export default function AllGamesCalendarNFL(){
