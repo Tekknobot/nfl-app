@@ -67,7 +67,7 @@ export default function Header() {
               mr: 1
             }}
           >
-            SNAPP.C
+            S.COUNT
           </Typography>
         </Box>
 
