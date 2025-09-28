@@ -131,8 +131,7 @@ async function getSeasonFinals(season) {
           const vs = Number(g.visitor_score ?? g.awayScore ?? NaN);
           if (!homeAbbr || !awayAbbr || !Number.isFinite(hs) || !Number.isFinite(vs)) continue;
 
-          const key = _seasonGameKey(g);
-          finalsMap.set(key, {
+          finalsMap.set(_seasonGameKey(g), {
             home: homeAbbr,
             away: awayAbbr,
             home_pts: hs,
@@ -150,53 +149,6 @@ async function getSeasonFinals(season) {
   return finals;
 }
 
-/** Get ALL completed games this season across all teams (cached) */
-async function getSeasonFinals(season) {
-  if (_SEASON_FINALS_CACHE.has(season)) return _SEASON_FINALS_CACHE.get(season);
-
-  const teams = await getTeamsMap();
-  const finalsMap = new Map(); // gameKey -> normalized game
-
-  // Pull each team’s season; de-dup by key
-  const promises = [];
-  for (const [abbr, id] of teams.entries()) {
-    promises.push(
-      fetchTeamGamesForSeason(id, season).then(list => {
-        for (const g of list || []) {
-          // detect finals using your helper & coerce scores
-          const final =
-            isFinalGame(g) ||
-            /(final|completed)/i.test(String(g.status||""));
-          if (!final) continue;
-
-          const homeAbbr = (g?.home_team?.abbreviation || g.home || "").toUpperCase();
-          const awayAbbr = (g?.visitor_team?.abbreviation || g.away || "").toUpperCase();
-          const hs = Number(g.home_score ?? g.homeScore ?? NaN);
-          const vs = Number(g.visitor_score ?? g.awayScore ?? NaN);
-          if (!Number.isFinite(hs) || !Number.isFinite(vs)) continue;
-
-          const key = _seasonGameKey(g);
-          if (!homeAbbr || !awayAbbr) continue;
-
-          finalsMap.set(key, {
-            home: homeAbbr,
-            away: awayAbbr,
-            home_pts: hs,
-            away_pts: vs,
-            week: Number(g.week ?? g?.game?.week ?? NaN)
-          });
-        }
-      }).catch(()=>{})
-    );
-  }
-  await Promise.all(promises);
-
-  const finals = Array.from(finalsMap.values());
-  _SEASON_FINALS_CACHE.set(season, finals);
-  return finals;
-}
-
-/** Fit simple offensive/defensive ratings + data-driven HFA using SGD on points.
 /** Fit offensive/defensive ratings + data-driven HFA using season finals */
 const _SEASON_RATINGS_CACHE = new Map(); // season -> { off:Map, def:Map, hfa:number, sigma:number }
 
@@ -483,9 +435,9 @@ async function fetchLiveGameBDL({ dateISO, homeAbbr, awayAbbr }) {
 
   // Find the exact matchup for this date (compare abbreviations)
   const match = data.find(g => {
-    const h = (g?.home_team?.abbreviation || "").toUpperCase();
-    const v = (g?.visitor_team?.abbreviation || "").toUpperCase();
-    return h === homeAbbr && v === awayAbbr;
+    const h = canonAbbr(g?.home_team?.abbreviation);
+    const v = canonAbbr(g?.visitor_team?.abbreviation);
+    return h === canonAbbr(homeAbbr) && v === canonAbbr(awayAbbr);
   });
   if (!match) return null;
 
@@ -966,8 +918,8 @@ useEffect(() => {
 
       const live = await fetchLiveGameBDL({
         dateISO,
-        homeAbbr: selected.g.home,
-        awayAbbr: selected.g.away
+        homeAbbr: canonAbbr(selected.g.home),
+        awayAbbr: canonAbbr(selected.g.away)
       });
       if (!live || cancelled) return;
 
