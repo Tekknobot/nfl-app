@@ -221,12 +221,11 @@ function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick
 
 function GameRow({ g, onClick }) {
   // normalize + detect final
-  const homeScore = Number.isFinite(g.homeScore) ? g.homeScore : (
-    Number.isFinite(g.home_score) ? g.home_score : null
-  );
-  const awayScore = Number.isFinite(g.awayScore) ? g.awayScore : (
-    Number.isFinite(g.visitor_score) ? g.visitor_score : null
-  );
+  const homeScore = Number.isFinite(g.homeScore) ? g.homeScore :
+                    Number.isFinite(g.home_score) ? g.home_score : null;
+  const awayScore = Number.isFinite(g.awayScore) ? g.awayScore :
+                    Number.isFinite(g.visitor_score) ? g.visitor_score : null;
+
   const isFinal = /final/i.test(g.status || "");
   const haveScores = Number.isFinite(homeScore) && Number.isFinite(awayScore);
   const winner =
@@ -256,6 +255,8 @@ function GameRow({ g, onClick }) {
             >
               {g.away} @ {g.home}
             </Typography>
+
+            {/* When not final, show kickoff + live status under the title */}
             {!isFinal && (
               <Typography variant="caption" sx={{ opacity: .8, display: "block" }}>
                 {fmtTime(g.kickoff)}{g.status ? ` · ${g.status}` : ""}
@@ -263,16 +264,14 @@ function GameRow({ g, onClick }) {
             )}
           </Box>
 
-          {/* Right side: stacked score */}
+          {/* Right side: status chip + STACKED score */}
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
-            {/* Status chip */}
             {isFinal ? (
               <Chip size="small" color="success" label="Final" />
             ) : haveScores ? (
               <Chip size="small" label={g.status || "In Progress"} />
             ) : null}
 
-            {/* Two-line score stack (right-aligned) */}
             {haveScores ? (
               <Box
                 sx={{
