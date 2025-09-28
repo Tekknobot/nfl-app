@@ -65,6 +65,183 @@ function impliedProbFromMoneyline(ml) {
   return null;
 }
 
+/** ===== Season-wide model (uses ALL completed games this season) ===== */
+
+/** Small numeric helpers */
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+/** Build a unique key for a game entry (avoid double-counting across teams) */
+function _seasonGameKey(g) {
+  // Prefer a real id if present; else use date + teams
+  if (g.id != null) return `id:${g.id}`;
+  const d = new Date(g.date || g.kickoff || g.start_time || 0);
+  const y = d.getFullYear(), m = d.getMonth()+1, day = d.getDate();
+  const k = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  const ha = (g?.home_team?.abbreviation || g.home || "").toUpperCase();
+  const va = (g?.visitor_team?.abbreviation || g.away || "").toUpperCase();
+  return `${k}|${va}@${ha}`;
+}
+
+/** Get ALL completed games this season across all teams (cached) */
+const _SEASON_FINALS_CACHE = new Map(); // season -> [{home,away,home_pts,away_pts,week}]
+async function getSeasonFinals(season) {
+  if (_SEASON_FINALS_CACHE.has(season)) return _SEASON_FINALS_CACHE.get(season);
+
+  const teams = await getTeamsMap();
+  const finalsMap = new Map(); // gameKey -> normalized game
+
+  // Pull each team’s season; de-dup by key
+  const promises = [];
+  for (const [abbr, id] of teams.entries()) {
+    promises.push(
+      fetchTeamGamesForSeason(id, season).then(list => {
+        for (const g of list || []) {
+          // detect finals using your helper & coerce scores
+          const final =
+            isFinalGame(g) ||
+            /(final|completed)/i.test(String(g.status||""));
+          if (!final) continue;
+
+          const homeAbbr = (g?.home_team?.abbreviation || g.home || "").toUpperCase();
+          const awayAbbr = (g?.visitor_team?.abbreviation || g.away || "").toUpperCase();
+          const hs = Number(g.home_score ?? g.homeScore ?? NaN);
+          const vs = Number(g.visitor_score ?? g.awayScore ?? NaN);
+          if (!Number.isFinite(hs) || !Number.isFinite(vs)) continue;
+
+          const key = _seasonGameKey(g);
+          if (!homeAbbr || !awayAbbr) continue;
+
+          finalsMap.set(key, {
+            home: homeAbbr,
+            away: awayAbbr,
+            home_pts: hs,
+            away_pts: vs,
+            week: Number(g.week ?? g?.game?.week ?? NaN)
+          });
+        }
+      }).catch(()=>{})
+    );
+  }
+  await Promise.all(promises);
+
+  const finals = Array.from(finalsMap.values());
+  _SEASON_FINALS_CACHE.set(season, finals);
+  return finals;
+}
+
+/** Fit simple offensive/defensive ratings + data-driven HFA using SGD on points.
+ *  Model: E[home_pts] = off[home] - def[away] + HFA
+ *         E[away_pts] = off[away] - def[home]
+ */
+const _SEASON_RATINGS_CACHE = new Map(); // season -> { off:Map, def:Map, hfa:number, sigma:number }
+async function getSeasonRatings(season) {
+  if (_SEASON_RATINGS_CACHE.has(season)) return _SEASON_RATINGS_CACHE.get(season);
+
+  const games = await getSeasonFinals(season);
+  if (!games.length) {
+    const empty = { off:new Map(), def:new Map(), hfa:2.0, sigma:7.0 };
+    _SEASON_RATINGS_CACHE.set(season, empty);
+    return empty;
+  }
+
+  // Teams set
+  const teamSet = new Set();
+  games.forEach(g => { teamSet.add(g.home); teamSet.add(g.away); });
+
+  // Init ratings at 0
+  const off = new Map(), def = new Map();
+  for (const t of teamSet) { off.set(t, 0); def.set(t, 0); }
+
+  // Initial HFA: mean(home_pts - away_pts)
+  let hfa = 0;
+  if (games.length) {
+    hfa = games.reduce((s,g)=> s + (g.home_pts - g.away_pts), 0) / games.length;
+  }
+
+  // Exponential recency weights by week (if week missing, weight 1)
+  const weeks = games.map(g => g.week).filter(w => Number.isFinite(w));
+  const maxWeek = weeks.length ? Math.max(...weeks) : null;
+  const weekWeight = (w) => (Number.isFinite(w) && maxWeek != null) ? Math.pow(0.85, (maxWeek - w)) : 1;
+
+  // SGD
+  const LR = 0.015;
+  const EPOCHS = 10;
+  for (let epoch=0; epoch<EPOCHS; epoch++) {
+    for (const g of games) {
+      const w = weekWeight(g.week);
+      const oh = off.get(g.home), dh = def.get(g.home);
+      const oa = off.get(g.away), da = def.get(g.away);
+
+      const predH = oh - da + hfa;
+      const predA = oa - dh;
+
+      const errH = (g.home_pts - predH);
+      const errA = (g.away_pts - predA);
+
+      // update offense/defense with coupled gradients
+      off.set(g.home, oh + LR * w * errH);
+      def.set(g.away, da - LR * w * errH);
+
+      off.set(g.away, oa + LR * w * errA);
+      def.set(g.home, dh - LR * w * errA);
+    }
+
+    // Center ratings to avoid drift (mean zero)
+    const meanOff = Array.from(off.values()).reduce((a,b)=>a+b,0)/off.size;
+    const meanDef = Array.from(def.values()).reduce((a,b)=>a+b,0)/def.size;
+    for (const t of off.keys()) off.set(t, off.get(t) - meanOff);
+    for (const t of def.keys()) def.set(t, def.get(t) - meanDef);
+
+    // Optional: lightly update HFA each epoch
+    // (error reduction on home margin)
+    let hErrSum=0, wSum=0;
+    for (const g of games) {
+      const w = weekWeight(g.week);
+      const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
+      const errM = (g.home_pts - g.away_pts) - predMargin;
+      hErrSum += w * errM;
+      wSum += w;
+    }
+    if (wSum > 0) hfa += (LR * 0.25) * (hErrSum / wSum);
+  }
+
+  // Estimate sigma (point margin noise) for logistic conversion
+  let sse = 0, n = 0;
+  for (const g of games) {
+    const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
+    const err = (g.home_pts - g.away_pts) - predMargin;
+    sse += err*err; n++;
+  }
+  const rmse = n ? Math.sqrt(sse/n) : 7.0;
+  const sigma = Math.max(5.0, Math.min(12.0, rmse)); // keep in a reasonable NFL-ish band
+
+  const out = { off, def, hfa, sigma };
+  _SEASON_RATINGS_CACHE.set(season, out);
+  return out;
+}
+
+/** Predict probability using season ratings (all finals this season) */
+async function predictSeasonProb({ season, homeAbbr, awayAbbr }) {
+  const { off, def, hfa, sigma } = await getSeasonRatings(season);
+  const H = String(homeAbbr).toUpperCase();
+  const A = String(awayAbbr).toUpperCase();
+
+  // If a team is missing (shouldn’t happen), fall back gently
+  if (!off.has(H) || !off.has(A)) {
+    const pHome = probFromMargin(hfa, 7);
+    return { pHome, note: "Season model fallback (missing team rating)" };
+  }
+
+  const margin =
+    (off.get(H) - def.get(A)) - (off.get(A) - def.get(H)) + hfa;
+
+  const pHome = 1 / (1 + Math.exp(-margin / (sigma || 7)));
+  return {
+    pHome,
+    note: `Season model: ${season} finals (team O/D + HFA, σ≈${(sigma||7).toFixed(1)})`
+  };
+}
+
 async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
   /** Remove the bookmaker vig by normalizing home/away implied probs. */
   function devigNormalize(pHomeRaw, pAwayRaw) {
@@ -235,62 +412,60 @@ async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
     return null;
   }
 }
-
-
-/** Returns { home, away, note }, preferring BDL Pro moneylines (de-vigged),
- *  and falling back to the simple form model you already have.
+/** Returns { home, away, note } using ALL signals:
+ *  - BDL Pro moneylines (de-vigged)
+ *  - Season-wide model from ALL completed games this season
+ *  Blends them for a robust final probability.
  */
 async function getWinProbabilityForGame(g) {
+  const season = new Date(g.kickoff).getFullYear();
+  const homeAbbr = g.home, awayAbbr = g.away;
+
+  // 1) Season model (always try; it’s local & robust)
+  const seasonRes = await predictSeasonProb({ season, homeAbbr, awayAbbr });
+  const pModel = seasonRes?.pHome ?? null;
+
+  // 2) Market odds (Pro)
   const d = new Date(g.kickoff);
   const dateISO = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-
-  // 1) Try Pro moneylines
-  const pro = await fetchGameMoneylinesBDLPro({
-    dateISO,
-    homeAbbr: g.home,
-    awayAbbr: g.away,
-  });
+  const pro = await fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr });
+  let pMarket = null, note = "";
   if (pro?.mlHome != null && pro?.mlAway != null) {
     const pHraw = impliedProbFromMoneyline(pro.mlHome);
     const pAraw = impliedProbFromMoneyline(pro.mlAway);
-    const devig = devigNormalize(pHraw, pAraw);
+    const devig = (function devigNormalize(pHomeRaw, pAwayRaw) {
+      if (pHomeRaw == null || pAwayRaw == null) return null;
+      const sum = pHomeRaw + pAwayRaw;
+      if (sum <= 0) return null;
+      return { home: pHomeRaw / sum, away: pAwayRaw / sum };
+    })(pHraw, pAraw);
     if (devig) {
-      return {
-        home: devig.home,
-        away: devig.away,
-        note: `Based on BDL Pro moneylines (de-vigged).`,
-      };
+      pMarket = devig.home;
     }
   }
 
-  // 2) Fall back to your existing form model
-  const season = new Date(g.kickoff).getFullYear();
-  const [homeForm, awayForm] = await Promise.all([
-    getTeamFormFromPastGames(g.home, season),
-    getTeamFormFromPastGames(g.away, season),
-  ]);
-
-  const HFA = 2.0;
-  let margin, note = "Based on recent completed games (this & last season)";
-  if (
-    homeForm.ppg != null && homeForm.oppg != null &&
-    awayForm.ppg != null && awayForm.oppg != null
-  ) {
-    const homeOff = homeForm.ppg;
-    const awayDef = awayForm.oppg;
-    const awayOff = awayForm.ppg;
-    const homeDef = homeForm.oppg;
-    margin = (homeOff - awayDef) - (awayOff - homeDef) + HFA;
-  } else if (homeForm.ppg != null && awayForm.ppg != null) {
-    margin = (homeForm.ppg - awayForm.ppg) + HFA;
-    note = "Based on recent points per game (limited finals available)";
+  // 3) Blend (prefer market, keep model signal)
+  let pHome = null;
+  if (pMarket != null && pModel != null) {
+    const ALPHA = 0.7; // 70% market, 30% model
+    pHome = clamp01(ALPHA * pMarket + (1-ALPHA) * pModel);
+    note = `Blended: Market (70%) + ${seasonRes.note}`;
+  } else if (pMarket != null) {
+    pHome = clamp01(pMarket);
+    note = `Based on BDL Pro moneylines (de-vigged).`;
+  } else if (pModel != null) {
+    pHome = clamp01(pModel);
+    note = seasonRes.note;
   } else {
-    margin = HFA;
-    note = "Insufficient past-game data; home advantage only";
+    // absolute fallback
+    const HFA = 2.0;
+    pHome = probFromMargin(HFA, 7);
+    note = "Fallback: HFA only";
   }
-  const pHome = probFromMargin(margin, 7);
+
   return { home: pHome, away: 1 - pHome, note };
 }
+
 
 async function fetchLiveGameBDL({ dateISO, homeAbbr, awayAbbr }) {
   const headers = bdlHeaders();
