@@ -159,7 +159,7 @@ function probFromMargin(margin, scale = 7) {
 }
 
 /* ---------- Small subcomponents ---------- */
-function DayPill({ d, selected, count, onClick }) {
+function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick }) {
   const dow = d.toLocaleDateString(undefined,{ weekday:'short' });
   const day = d.getDate();
   const isToday = dateKey(new Date()) === dateKey(d);
@@ -186,19 +186,39 @@ function DayPill({ d, selected, count, onClick }) {
       <Typography variant="caption" sx={{ opacity: 0.85, lineHeight: 1 }}>
         {dow}{isToday && !selected ? ' •' : ''}
       </Typography>
+
       <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1, mt: 0.25 }}>
         {String(day).padStart(2,'0')}
       </Typography>
-      <Chip
-        size="small"
-        label={count ? `${count}` : '0'}
-        color={count ? 'secondary' : 'default'}
-        variant={selected ? 'filled' : 'outlined'}
-        sx={{ mt: 0.9, height: 20, borderRadius: 0.75, '& .MuiChip-label': { px: .8, fontSize: 11, fontWeight: 700 } }}
-      />
+
+      {/* Count + Final indicator */}
+      <Stack direction="row" spacing={0.5} sx={{ mt: 0.9 }}>
+        <Chip
+          size="small"
+          label={String(count)}
+          color={count ? 'secondary' : 'default'}
+          variant={selected ? 'filled' : 'outlined'}
+          sx={{ height: 20, borderRadius: 0.75, '& .MuiChip-label': { px: .8, fontSize: 11, fontWeight: 700 } }}
+        />
+        {allFinal ? (
+          <Chip
+            size="small"
+            color="success"
+            label="Final"
+            sx={{ height: 20, borderRadius: 0.75, '& .MuiChip-label': { px: .8, fontSize: 11, fontWeight: 700 } }}
+          />
+        ) : (finalCount > 0 ? (
+          <Chip
+            size="small"
+            label={`${finalCount} final`}
+            sx={{ height: 20, borderRadius: 0.75, '& .MuiChip-label': { px: .8, fontSize: 11, fontWeight: 700 } }}
+          />
+        ) : null)}
+      </Stack>
     </Button>
   );
 }
+
 
 function GameRow({ g, onClick }) {
   const isFinal = /final/i.test(g.status || "");
@@ -463,6 +483,7 @@ useEffect(() => {
 
   /* ---------- Render ---------- */
   const weekLabel = `Week of ${monthName(startOfWeek(cursor))} ${startOfWeek(cursor).getDate()}, ${startOfWeek(cursor).getFullYear()}`;
+  const isFinalStatus = (s) => /final/i.test(s || "");
 
   return (
     <Box sx={{ maxWidth: 720, mx:'auto', px:{ xs:1, sm:2 } }}>
@@ -491,13 +512,30 @@ useEffect(() => {
           "&::-webkit-scrollbar": { display:'none' }
         }}
       >
-        {week.map((d)=> {
+        {week.map((d) => {
           const key = dateKey(d);
-          const count = gamesFor(d).length;
+          const dayGames = gamesFor(d);
+
+          // merge live patches (status/scores) for the pill counts
+          let finals = 0;
+          for (const g of dayGames) {
+            const patch = liveByKey[gameKey(g)];
+            const status = patch?.status ?? g.status;
+            if (isFinalStatus(status)) finals++;
+          }
+          const allFinal = dayGames.length > 0 && finals === dayGames.length;
+
           const selected = dateKey(selectedDate) === key;
           return (
-            <Box key={key} data-day={key} sx={{ flex:'0 0 auto' }}>
-              <DayPill d={d} selected={selected} count={count} onClick={()=> setSelectedDate(d)} />
+            <Box key={key} data-day={key} sx={{ flex: '0 0 auto' }}>
+              <DayPill
+                d={d}
+                selected={selected}
+                count={dayGames.length}
+                finalCount={finals}
+                allFinal={allFinal}
+                onClick={() => setSelectedDate(d)}
+              />
             </Box>
           );
         })}
