@@ -65,173 +65,175 @@ function impliedProbFromMoneyline(ml) {
   return null;
 }
 
-/** Remove the bookmaker vig by normalizing home/away implied probs. */
-function devigNormalize(pHomeRaw, pAwayRaw) {
-  if (pHomeRaw == null || pAwayRaw == null) return null;
-  const sum = pHomeRaw + pAwayRaw;
-  if (sum <= 0) return null;
-  return { home: pHomeRaw / sum, away: pAwayRaw / sum };
-}
-
-/** Attempt to pull pro-tier moneylines for a specific game.
- *  This is flexible on endpoint/shape so it won’t crash if the API differs.
- *  It tries a couple of likely shapes and returns { mlHome, mlAway } or null.
- *  Requires REACT_APP_BDL_KEY to be set.
- */
-/** Attempt to pull pro-tier moneylines for a specific game (robust parser). */
 async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
-  const key = process.env.REACT_APP_BDL_KEY?.trim();
-  if (!key) return null;
+  /** Remove the bookmaker vig by normalizing home/away implied probs. */
+  function devigNormalize(pHomeRaw, pAwayRaw) {
+    if (pHomeRaw == null || pAwayRaw == null) return null;
+    const sum = pHomeRaw + pAwayRaw;
+    if (sum <= 0) return null;
+    return { home: pHomeRaw / sum, away: pAwayRaw / sum };
+  }
 
-  const headers = { Accept: "application/json", Authorization: key };
+  /** Attempt to pull pro-tier moneylines for a specific game.
+   *  This is flexible on endpoint/shape so it won’t crash if the API differs.
+   *  It tries a couple of likely shapes and returns { mlHome, mlAway } or null.
+   *  Requires REACT_APP_BDL_KEY to be set.
+   */
+  /** Attempt to pull pro-tier moneylines for a specific game (robust parser). */
+  async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
+    const key = process.env.REACT_APP_BDL_KEY?.trim();
+    if (!key) return null;
 
-  // If your pro docs specify a canonical endpoint, use it here.
-  const candidates = [
-    { path: "/odds", params: { date: dateISO, sport: "nfl" } },
-    { path: "/games", params: { "dates[]": dateISO, include: "odds", sport: "nfl" } },
-  ];
+    const headers = { Accept: "application/json", Authorization: key };
 
-  const buildUrl = (base, path, params) => {
-    const u = new URL(`${base}${path}`);
-    Object.entries(params || {}).forEach(([k, v]) => u.searchParams.append(k, v));
-    if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
-    return u.toString();
-  };
-
-  // Team matching helper: compare abbreviations case-insensitively
-  const sameAbbr = (a, b) => String(a || "").toUpperCase() === String(b || "").toUpperCase();
-
-  // Extract moneylines from a very wide variety of shapes.
-  const readPairFromUnknown = (container) => {
-    if (!container || typeof container !== "object") return { home: null, away: null };
-
-    // 1) Flat fields on container
-    const flatKeys = (side) => [
-      `${side}_moneyline`, `${side}_ml`, `${side}_price`,
-      side === "home" ? "ml_home" : "ml_away",
-      side === "home" ? "moneyline_home" : "moneyline_away",
-      side === "home" ? "homePrice" : "awayPrice",
-      side === "home" ? "homeMoneyline" : "awayMoneyline",
+    // If your pro docs specify a canonical endpoint, use it here.
+    const candidates = [
+      { path: "/odds", params: { date: dateISO, sport: "nfl" } },
+      { path: "/games", params: { "dates[]": dateISO, include: "odds", sport: "nfl" } },
     ];
-    const readFlat = (side) => {
-      for (const k of flatKeys(side)) {
-        const v = container?.[k];
-        if (v != null) return Number(v);
-      }
-      return null;
-    };
-    let mlHome = readFlat("home");
-    let mlAway = readFlat("away");
-    if (mlHome != null && mlAway != null) return { home: mlHome, away: mlAway };
 
-    // 2) outcomes array: markets[].outcomes[] with { name/side/selection, price/american }
-    const tryOutcomes = (obj) => {
-      const out = Array.isArray(obj?.outcomes) ? obj.outcomes : Array.isArray(obj) ? obj : [];
-      if (!out.length) return { home: null, away: null };
-      const pickPrice = (o) => {
-        if (o == null) return null;
-        const p = o.price ?? o.american ?? o.moneyline ?? o.ml ?? o.odds;
-        return p != null ? Number(p) : null;
+    const buildUrl = (base, path, params) => {
+      const u = new URL(`${base}${path}`);
+      Object.entries(params || {}).forEach(([k, v]) => u.searchParams.append(k, v));
+      if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
+      return u.toString();
+    };
+
+    // Team matching helper: compare abbreviations case-insensitively
+    const sameAbbr = (a, b) => String(a || "").toUpperCase() === String(b || "").toUpperCase();
+
+    // Extract moneylines from a very wide variety of shapes.
+    const readPairFromUnknown = (container) => {
+      if (!container || typeof container !== "object") return { home: null, away: null };
+
+      // 1) Flat fields on container
+      const flatKeys = (side) => [
+        `${side}_moneyline`, `${side}_ml`, `${side}_price`,
+        side === "home" ? "ml_home" : "ml_away",
+        side === "home" ? "moneyline_home" : "moneyline_away",
+        side === "home" ? "homePrice" : "awayPrice",
+        side === "home" ? "homeMoneyline" : "awayMoneyline",
+      ];
+      const readFlat = (side) => {
+        for (const k of flatKeys(side)) {
+          const v = container?.[k];
+          if (v != null) return Number(v);
+        }
+        return null;
       };
-      // try to resolve which outcome is home/away
-      const hCand = out.find(o => /(home|h)/i.test(String(o.side || o.role || o.selection || ""))) ||
-                    out.find(o => sameAbbr(o.team?.abbreviation, container?.home_team?.abbreviation));
-      const aCand = out.find(o => /(away|a|visitor)/i.test(String(o.side || o.role || o.selection || ""))) ||
-                    out.find(o => sameAbbr(o.team?.abbreviation, container?.visitor_team?.abbreviation) ||
-                                  sameAbbr(o.team?.abbreviation, container?.away_team?.abbreviation));
-      const h = pickPrice(hCand);
-      const a = pickPrice(aCand);
-      return { home: h ?? null, away: a ?? null };
-    };
+      let mlHome = readFlat("home");
+      let mlAway = readFlat("away");
+      if (mlHome != null && mlAway != null) return { home: mlHome, away: mlAway };
 
-    // 3) books/markets shapes
-    const books = container?.books || container?.offers || null;
-    if (Array.isArray(books) && books.length) {
-      // pick first book with a moneyline market
-      for (const book of books) {
-        const markets = book?.markets || book?.lines || book?.offers || null;
-        if (!markets) continue;
+      // 2) outcomes array: markets[].outcomes[] with { name/side/selection, price/american }
+      const tryOutcomes = (obj) => {
+        const out = Array.isArray(obj?.outcomes) ? obj.outcomes : Array.isArray(obj) ? obj : [];
+        if (!out.length) return { home: null, away: null };
+        const pickPrice = (o) => {
+          if (o == null) return null;
+          const p = o.price ?? o.american ?? o.moneyline ?? o.ml ?? o.odds;
+          return p != null ? Number(p) : null;
+        };
+        // try to resolve which outcome is home/away
+        const hCand = out.find(o => /(home|h)/i.test(String(o.side || o.role || o.selection || ""))) ||
+                      out.find(o => sameAbbr(o.team?.abbreviation, container?.home_team?.abbreviation));
+        const aCand = out.find(o => /(away|a|visitor)/i.test(String(o.side || o.role || o.selection || ""))) ||
+                      out.find(o => sameAbbr(o.team?.abbreviation, container?.visitor_team?.abbreviation) ||
+                                    sameAbbr(o.team?.abbreviation, container?.away_team?.abbreviation));
+        const h = pickPrice(hCand);
+        const a = pickPrice(aCand);
+        return { home: h ?? null, away: a ?? null };
+      };
+
+      // 3) books/markets shapes
+      const books = container?.books || container?.offers || null;
+      if (Array.isArray(books) && books.length) {
+        // pick first book with a moneyline market
+        for (const book of books) {
+          const markets = book?.markets || book?.lines || book?.offers || null;
+          if (!markets) continue;
+          const arr = Array.isArray(markets) ? markets : [markets];
+          // try to find a market named "moneyline"
+          let mlMarket =
+            arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) ||
+            arr[0];
+          if (!mlMarket) continue;
+
+          // Sometimes the prices are directly on market as home/away fields
+          let { home, away } = readPairFromUnknown(mlMarket);
+          if (home != null && away != null) return { home, away };
+
+          // Or inside outcomes
+          const o = tryOutcomes(mlMarket);
+          if (o.home != null && o.away != null) return o;
+        }
+      }
+
+      // 4) markets directly on container
+      const markets = container?.markets || container?.odds || container?.market || null;
+      if (markets) {
         const arr = Array.isArray(markets) ? markets : [markets];
-        // try to find a market named "moneyline"
         let mlMarket =
           arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) ||
           arr[0];
-        if (!mlMarket) continue;
+        if (mlMarket) {
+          // Same attempts as above
+          let { home, away } = readPairFromUnknown(mlMarket);
+          if (home != null && away != null) return { home, away };
+          const o = tryOutcomes(mlMarket);
+          if (o.home != null && o.away != null) return o;
+        }
+      }
 
-        // Sometimes the prices are directly on market as home/away fields
-        let { home, away } = readPairFromUnknown(mlMarket);
-        if (home != null && away != null) return { home, away };
+      // 5) Try outcomes at root
+      const o = tryOutcomes(container);
+      if (o.home != null && o.away != null) return o;
 
-        // Or inside outcomes
-        const o = tryOutcomes(mlMarket);
-        if (o.home != null && o.away != null) return o;
+      return { home: null, away: null };
+    };
+
+    for (const c of candidates) {
+      try {
+        const url = buildUrl(BDL_API, c.path, c.params);
+        const r = await fetch(url, { headers });
+        if (!r.ok) continue;
+        const j = await r.json();
+
+        const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
+        if (!list.length) continue;
+
+        const row = list.find(item => {
+          // try to get abbrevs in a few shapes
+          const h =
+            item?.home_team?.abbreviation ??
+            item?.homeTeam?.abbreviation ??
+            item?.home_abbr ?? item?.home;
+          const a =
+            item?.visitor_team?.abbreviation ??
+            item?.away_team?.abbreviation ??
+            item?.awayTeam?.abbreviation ??
+            item?.away_abbr ?? item?.away;
+          return sameAbbr(h, homeAbbr) && sameAbbr(a, awayAbbr);
+        });
+        if (!row) continue;
+
+        const { home, away } = readPairFromUnknown(row);
+        if (home != null && away != null) return { mlHome: home, mlAway: away };
+
+        // Sometimes odds live on a nested "odds" / "book" node separate from row
+        const nestedSources = [row?.odds, row?.book, row?.books, row?.markets, row?.offers].flat().filter(Boolean);
+        for (const src of (Array.isArray(nestedSources) ? nestedSources : [nestedSources])) {
+          const p = readPairFromUnknown(src);
+          if (p.home != null && p.away != null) return { mlHome: p.home, mlAway: p.away };
+        }
+      } catch (e) {
+        // swallow and try next
+        // console.debug("[BDL Pro] candidate failed", c.path, e);
+        continue;
       }
     }
-
-    // 4) markets directly on container
-    const markets = container?.markets || container?.odds || container?.market || null;
-    if (markets) {
-      const arr = Array.isArray(markets) ? markets : [markets];
-      let mlMarket =
-        arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) ||
-        arr[0];
-      if (mlMarket) {
-        // Same attempts as above
-        let { home, away } = readPairFromUnknown(mlMarket);
-        if (home != null && away != null) return { home, away };
-        const o = tryOutcomes(mlMarket);
-        if (o.home != null && o.away != null) return o;
-      }
-    }
-
-    // 5) Try outcomes at root
-    const o = tryOutcomes(container);
-    if (o.home != null && o.away != null) return o;
-
-    return { home: null, away: null };
-  };
-
-  for (const c of candidates) {
-    try {
-      const url = buildUrl(BDL_API, c.path, c.params);
-      const r = await fetch(url, { headers });
-      if (!r.ok) continue;
-      const j = await r.json();
-
-      const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
-      if (!list.length) continue;
-
-      const row = list.find(item => {
-        // try to get abbrevs in a few shapes
-        const h =
-          item?.home_team?.abbreviation ??
-          item?.homeTeam?.abbreviation ??
-          item?.home_abbr ?? item?.home;
-        const a =
-          item?.visitor_team?.abbreviation ??
-          item?.away_team?.abbreviation ??
-          item?.awayTeam?.abbreviation ??
-          item?.away_abbr ?? item?.away;
-        return sameAbbr(h, homeAbbr) && sameAbbr(a, awayAbbr);
-      });
-      if (!row) continue;
-
-      const { home, away } = readPairFromUnknown(row);
-      if (home != null && away != null) return { mlHome: home, mlAway: away };
-
-      // Sometimes odds live on a nested "odds" / "book" node separate from row
-      const nestedSources = [row?.odds, row?.book, row?.books, row?.markets, row?.offers].flat().filter(Boolean);
-      for (const src of (Array.isArray(nestedSources) ? nestedSources : [nestedSources])) {
-        const p = readPairFromUnknown(src);
-        if (p.home != null && p.away != null) return { mlHome: p.home, mlAway: p.away };
-      }
-    } catch (e) {
-      // swallow and try next
-      // console.debug("[BDL Pro] candidate failed", c.path, e);
-      continue;
-    }
+    return null;
   }
-  return null;
 }
 
 
