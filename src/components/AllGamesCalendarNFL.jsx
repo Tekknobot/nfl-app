@@ -26,7 +26,6 @@ const monthName = d => d.toLocaleDateString(undefined,{month:"long"});
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 const pad = n => String(n).padStart(2,'0');
 const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-const [liveByKey, setLiveByKey] = useState({}); // key -> { status, homeScore, awayScore }
 
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function addWeeks(d,n){ return addDays(d, n*7); }
@@ -264,7 +263,8 @@ export default function AllGamesCalendarNFL(){
   const [cursor, setCursor] = useState(()=> startOfWeek(new Date())); // week start
   const [selectedDate, setSelectedDate] = useState(()=> new Date());
   const [selected, setSelected] = useState(null); // { g, d }
-
+  const [liveByKey, setLiveByKey] = useState({});
+  
   // probability state
   const [prob, setProb] = useState(null);       // { home, away } or null
   const [probLoading, setProbLoading] = useState(false);
