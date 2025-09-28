@@ -294,21 +294,31 @@ export default function AllGamesCalendarNFL(){
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const stripRef = useRef(null);
 
-  // Load schedule JSON once
-  useEffect(()=> {
-    let cancelled=false;
-    (async()=>{
-      try{
-        const r = await fetch(process.env.PUBLIC_URL + "/nfl-upcoming-3mo.json", { cache:"no-store" });
-        if (!r.ok) throw new Error("schedule fetch failed");
+  // Load schedule JSON once (safe PUBLIC_URL)
+  useEffect(() => {
+    let cancelled = false;
+
+    const base =
+      typeof process.env.PUBLIC_URL === "string" && process.env.PUBLIC_URL.trim() !== ""
+        ? process.env.PUBLIC_URL.replace(/\/+$/, "")
+        : ""; // CRA dev/prod safe
+
+    const url = `${base}/nfl-upcoming-3mo.json`;
+
+    (async () => {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) throw new Error(`schedule fetch failed: ${r.status} ${r.statusText}`);
         const json = await r.json();
-        if(!cancelled) setData(json || {});
-      }catch{
-        if(!cancelled) setData({});
+        if (!cancelled) setData(json || {});
+      } catch (err) {
+        console.error("[schedule] fetch error:", err);
+        if (!cancelled) setData({}); // avoid spinner forever
       }
     })();
-    return ()=>{cancelled=true};
-  },[]);
+
+    return () => { cancelled = true; };
+  }, []);
 
   // Week days
   const week = useMemo(()=>{
