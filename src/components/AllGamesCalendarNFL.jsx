@@ -358,8 +358,26 @@ export default function AllGamesCalendarNFL(){
     return Array.from({length:7}, (_,i)=> addDays(start,i));
   },[cursor]);
 
-  // Bucket helper
-  const gamesFor = (d)=> (data?.[dateKey(d)] || []).slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
+  // helpers (put near your other helpers)
+  const sameLocalDay = (a, b) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  // Replace your current gamesFor with this version
+  const gamesFor = (d) => {
+    if (!data) return [];
+    // Consider the local day and its UTC neighbors, then filter to the local day
+    const buckets = [
+      data[dateKey(d)] || [],
+      data[dateKey(addDays(d, -1))] || [],
+      data[dateKey(addDays(d, 1))] || []
+    ].flat();
+
+    return buckets
+      .filter(g => sameLocalDay(new Date(g.kickoff), d))
+      .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+  };
 
 // Auto-select first day with games when week changes
 useEffect(() => {
@@ -592,7 +610,7 @@ useEffect(() => {
 
           {data === null ? (
             <Stack alignItems="center" sx={{ py:3 }}><CircularProgress size={22} /></Stack>
-          ) : selectedGames.length ? (
+          ) : mergedGames.length ? (
             <Stack spacing={1}>
               {mergedGames.map((g, i)=>(
                 <GameRow key={i} g={g} onClick={()=> setSelected({ g, d: selectedDate })} />
