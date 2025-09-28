@@ -266,6 +266,17 @@ function extractScores(g) {
   return { home: null, away: null, have: false };
 }
 
+function normalizeScheduleKeys(raw) {
+  const out = {};
+  for (const [k, games] of Object.entries(raw || {})) {
+    const [y, m, d] = String(k).split("-").map(Number);
+    if (!y || !m || !d) continue;
+    const key = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    out[key] = Array.isArray(games) ? games : [];
+  }
+  return out;
+}
+
 function GameRow({ g, onClick }) {
   const { home: homeScore, away: awayScore, have: haveScores } = extractScores(g);
   const isFinal = isGameFinal(g);
@@ -373,7 +384,8 @@ export default function AllGamesCalendarNFL(){
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) throw new Error(`schedule fetch failed: ${r.status} ${r.statusText}`);
         const json = await r.json();
-        if (!cancelled) setData(json || {});
+        const normalized = normalizeScheduleKeys(json);
+        if (!cancelled) setData(normalized);
       } catch (err) {
         console.error("[schedule] fetch error:", err);
         if (!cancelled) setData({}); // avoid spinner forever
@@ -412,7 +424,7 @@ export default function AllGamesCalendarNFL(){
 
 // Auto-select first day with games when week changes
 useEffect(() => {
-  const first = week.find(d => (data?.[dateKey(d)] || []).length > 0) || week[0];
+  const first = week.find(d => gamesFor(d).length > 0) || week[0];
   setSelectedDate(first);
 
   const key = dateKey(first);
