@@ -26,6 +26,7 @@ const monthName = d => d.toLocaleDateString(undefined,{month:"long"});
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 const pad = n => String(n).padStart(2,'0');
 const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const [liveByKey, setLiveByKey] = useState({}); // key -> { status, homeScore, awayScore }
 
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function addWeeks(d,n){ return addDays(d, n*7); }
@@ -48,6 +49,13 @@ const bdlHeaders = () => {
 // Cache for /teams and per-team forms.
 let TEAMS_MAP_PROMISE = null; // Promise<Map<abbrev, id>>
 const teamFormCache = new Map(); // `${teamId}:${season}` -> {ppg,oppg}
+
+function gameKey(g) {
+  // YYYY-MM-DD from kickoff
+  const d = new Date(g.kickoff);
+  const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${key}|${(g.away || "").toUpperCase()}@${(g.home || "").toUpperCase()}`;
+}
 
 async function fetchLiveGameBDL({ dateISO, homeAbbr, awayAbbr }) {
   const headers = bdlHeaders();
@@ -194,14 +202,24 @@ function DayPill({ d, selected, count, onClick }) {
 }
 
 function GameRow({ g, onClick }) {
+  const isFinal = /final/i.test(g.status || "");
+  const hasScore = (g.homeScore != null && g.awayScore != null);
+
   return (
-    <Card variant="outlined" sx={{ borderRadius:1 }}>
+    <Card
+      variant="outlined"
+      sx={{
+        borderRadius:1,
+        ...(isFinal ? { bgcolor: 'rgba(76,175,80,0.06)', borderColor: 'rgba(76,175,80,0.35)' } : {})
+      }}
+    >
       <ListItemButton onClick={onClick} sx={{ borderRadius:1, '&:hover': { bgcolor: 'rgba(255,255,255,.06)' } }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ width:'100%' }}>
           <Avatar sx={{ width:28, height:28, fontSize:12, bgcolor: TEAM_COLORS[g.home]||'primary.main', color:'primary.contrastText' }}>
             {g.home}
           </Avatar>
 
+          {/* Middle text */}
           <Box sx={{ flex:'1 1 auto', minWidth:0 }}>
             <Typography
               variant="body2"
@@ -214,15 +232,31 @@ function GameRow({ g, onClick }) {
             </Typography>
             <Typography variant="caption" sx={{ opacity:.8 }}>
               {fmtTime(g.kickoff)}
+              {g.status && !isFinal && ` · ${g.status}`}
             </Typography>
           </Box>
 
-          <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+          {/* Right-side status/score */}
+          {hasScore ? (
+            <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: 'center' }}>
+              <Chip
+                size="small"
+                color={isFinal ? "success" : "default"}
+                label={isFinal ? "Final" : "In Progress"}
+              />
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {g.away} {g.awayScore} — {g.home} {g.homeScore}
+              </Typography>
+            </Stack>
+          ) : (
+            <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+          )}
         </Stack>
       </ListItemButton>
     </Card>
   );
 }
+
 
 /* ---------- Main Component ---------- */
 export default function AllGamesCalendarNFL(){
@@ -280,6 +314,19 @@ useEffect(() => {
 }, [week, data]);
 
   const selectedGames = gamesFor(selectedDate);
+
+  // merge live status/scores (if present) into agenda items
+  const mergedGames = useMemo(() => {
+    return selectedGames.map(g => {
+      const k = gameKey(g);
+      const patch = liveByKey[k] || {};
+      const out = { ...g };
+      if (patch.status) out.status = patch.status;
+      if (patch.homeScore != null) out.homeScore = patch.homeScore;
+      if (patch.awayScore != null) out.awayScore = patch.awayScore;
+      return out;
+    });
+  }, [selectedGames, liveByKey]);
 
   // Compute win probability when a game is opened (same model as before)
   useEffect(()=>{
@@ -381,6 +428,38 @@ useEffect(() => {
     };
   }, [selected?.g?.home, selected?.g?.away, selected?.g?.kickoff]);
 
+  // Live status/score for the selected day's list (polls every 60s)
+  useEffect(() => {
+    if (!selectedDate || !data) return;
+
+    let cancelled = false;
+    let timer = null;
+
+    const dateISO = dateKey(selectedDate);
+    const todays = (data[dateISO] || []).slice(); // games for selectedDate
+
+    async function refresh() {
+      // fetch once per game on this day; merge into liveByKey
+      const updates = {};
+      for (const g of todays) {
+        const live = await fetchLiveGameBDL({
+          dateISO,
+          homeAbbr: g.home,
+          awayAbbr: g.away
+        });
+        if (live) updates[gameKey(g)] = live;
+      }
+      if (!cancelled && Object.keys(updates).length) {
+        setLiveByKey(prev => ({ ...prev, ...updates }));
+      }
+      // schedule next tick only if at least one game isn’t final
+      const anyNotFinal = Object.values(updates).some(u => !/final/i.test(u.status || ""));
+      timer = setTimeout(refresh, anyNotFinal ? 60_000 : 180_000);
+    }
+
+    refresh();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [selectedDate, data]);
 
   /* ---------- Render ---------- */
   const weekLabel = `Week of ${monthName(startOfWeek(cursor))} ${startOfWeek(cursor).getDate()}, ${startOfWeek(cursor).getFullYear()}`;
@@ -435,7 +514,7 @@ useEffect(() => {
             <Stack alignItems="center" sx={{ py:3 }}><CircularProgress size={22} /></Stack>
           ) : selectedGames.length ? (
             <Stack spacing={1}>
-              {selectedGames.map((g, i)=>(
+              {mergedGames.map((g, i)=>(
                 <GameRow key={i} g={g} onClick={()=> setSelected({ g, d: selectedDate })} />
               ))}
             </Stack>
