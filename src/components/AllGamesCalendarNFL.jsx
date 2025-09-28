@@ -218,13 +218,21 @@ function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick
     </Button>
   );
 }
-// Final-state detection with extra fallbacks
+
+// Final-state detection with extra fallbacks (keep yours or this identical copy)
 function isGameFinal(g) {
   if (!g) return false;
   if (g.is_final === true) return true;
   if (String(g.status_code || "").toLowerCase() === "completed") return true;
   const s = String(g.status || "").toLowerCase();
   return /(final|completed|full\s*time|^ft$|ended|complete)/i.test(s);
+}
+
+// Lightweight live/in-progress detector
+function isGameLive(g) {
+  const s = String(g?.status || "").toLowerCase();
+  // cover “in progress”, quarters, halftime, OT, etc.
+  return /(in\s*progress|q1|q2|q3|q4|quarter|halftime|ot|overtime|end\s*q[1-4])/i.test(s);
 }
 
 // Coerce anything like "27", "27 (OT)" → 27
@@ -241,7 +249,6 @@ function extractScores(g) {
     [g?.home_score, g?.away_score],
     [g?.home_points, g?.away_points],
     [g?.home_final, g?.away_final],
-    [g?.home, g?.away], // some feeds put numbers in these after final (rare)
     [g?.score?.home, g?.score?.away],
     [g?.boxscore?.home_total, g?.boxscore?.away_total],
     [g?.totals?.home, g?.totals?.away],
@@ -249,22 +256,34 @@ function extractScores(g) {
 
   for (const [h, a] of tryPairs) {
     const H = scoreNum(h), A = scoreNum(a);
-    if (H !== null && A !== null) return { home: H, away: A, have: true };
+    if (H !== null && A !== null) {
+      // ⬇️ if 0–0 and not final or live, treat as "no score yet"
+      if (H === 0 && A === 0 && !isGameFinal(g) && !isGameLive(g)) {
+        return { home: null, away: null, have: false };
+      }
+      return { home: H, away: A, have: true };
+    }
   }
 
-  // Combined strings: "27-24", "27 – 24", etc. Assume format "away-home" is common; flip if it seems wrong
+  // Combined strings: "27-24", "27 – 24", etc. Assuming away-home order is common; flip if needed
   const combined = g?.final || g?.result || g?.scoreline || g?.score;
   if (typeof combined === "string") {
     const m = combined.match(/(\d+)\s*[–-]\s*(\d+)/); // en dash or hyphen
     if (m) {
       const A = scoreNum(m[1]);
       const H = scoreNum(m[2]);
-      if (H !== null && A !== null) return { home: H, away: A, have: true };
+      if (H !== null && A !== null) {
+        if (H === 0 && A === 0 && !isGameFinal(g) && !isGameLive(g)) {
+          return { home: null, away: null, have: false };
+        }
+        return { home: H, away: A, have: true };
+      }
     }
   }
 
   return { home: null, away: null, have: false };
 }
+
 
 function normalizeScheduleKeys(raw) {
   const out = {};
@@ -444,12 +463,25 @@ useEffect(() => {
       const k = gameKey(g);
       const patch = liveByKey[k] || {};
       const out = { ...g };
+
       if (patch.status) out.status = patch.status;
       if (patch.homeScore != null) out.homeScore = patch.homeScore;
       if (patch.awayScore != null) out.awayScore = patch.awayScore;
+
+      // 🚫 Hide placeholder 0–0 unless the game is final/live
+      const finalish = isGameFinal(out) || isGameLive(out);
+      if (!finalish) {
+        const H = Number(out.homeScore);
+        const A = Number(out.awayScore);
+        if (Number.isFinite(H) && Number.isFinite(A) && H === 0 && A === 0) {
+          delete out.homeScore;
+          delete out.awayScore;
+        }
+      }
       return out;
     });
   }, [selectedGames, liveByKey]);
+
 
   // Compute win probability when a game is opened (same model as before)
   useEffect(()=>{
