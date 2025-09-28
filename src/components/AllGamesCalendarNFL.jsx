@@ -336,17 +336,35 @@ function GameRow({ g, onClick }) {
             )}
           </Box>
 
-          {/* Right side: Final/In-Progress + stacked score (if any) */}
-          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+          {/* Right side: status on top, score below (stacked) */}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: 0.75,
+              flexShrink: 0,
+              minWidth: 112
+            }}
+          >
+            {/* Top row: status chip */}
             {isFinal ? (
               <Chip size="small" color="success" label="Final" />
             ) : haveScores ? (
               <Chip size="small" label={g.status || "In Progress"} />
-            ) : null}
+            ) : (
+              <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+            )}
 
-            {(haveScores || isFinal) && (
+            {/* Bottom: score block (always render for final; render when we have live scores) */}
+            {(isFinal || haveScores) && (
               <Box
-                sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.15, minWidth: 96 }}
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  lineHeight: 1.15
+                }}
                 aria-label={isFinal ? "Final score" : "Live score"}
               >
                 <Typography variant="body2" sx={{ fontWeight: winner === "away" ? 800 : 700 }}>
@@ -355,14 +373,17 @@ function GameRow({ g, onClick }) {
                 <Typography variant="body2" sx={{ fontWeight: winner === "home" ? 800 : 700, opacity: winner === "home" ? 1 : 0.95 }}>
                   {g.home} {homeScore ?? "—"}
                 </Typography>
+
+                {/* Optional tiny caption line for extra state like OT, halftime, etc. */}
+                {!isFinal && g.status && (
+                  <Typography variant="caption" sx={{ opacity: 0.75, mt: 0.25 }}>
+                    {g.status}
+                  </Typography>
+                )}
               </Box>
             )}
+          </Box>
 
-            {/* If not final and no scores yet, show the details chip */}
-            {!isFinal && !haveScores && (
-              <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
-            )}
-          </Stack>
         </Stack>
       </ListItemButton>
     </Card>
