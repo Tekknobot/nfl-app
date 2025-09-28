@@ -21,6 +21,8 @@ const TEAM_COLORS = {
   PHI:"#004C54", PIT:"#101820", SF:"#AA0000", SEA:"#002244", TB:"#D50A0A",
   TEN:"#0C2340", WSH:"#5A1414"
 };
+
+
 const dayName = d => d.toLocaleDateString(undefined,{weekday:"short"});
 const monthName = d => d.toLocaleDateString(undefined,{month:"long"});
 const fmtTime = iso => new Date(iso).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
@@ -56,6 +58,32 @@ function gameKey(g) {
   return `${key}|${(g.away || "").toUpperCase()}@${(g.home || "").toUpperCase()}`;
 }
 
+// Canonicalize common NFL abbreviation variants across feeds/APIs
+function canonAbbr(x) {
+  const k = String(x || "").toUpperCase();
+  const map = {
+    WAS: "WSH", WFT: "WSH", RED: "WSH",
+    JAC: "JAX",
+    TAM: "TB",
+    NOR: "NO",
+    GNB: "GB",
+    SFO: "SF",
+    ARZ: "ARI",
+    SD:  "LAC",
+    OAK: "LV",
+    STL: "LAR", LA: "LAR",
+    NWE: "NE",
+    KCC: "KC",
+  };
+  return map[k] || k;
+}
+
+// Ensure a team exists in the ratings with neutral 0 values
+function ensureTeamRating(off, def, abbr) {
+  if (!off.has(abbr)) off.set(abbr, 0);
+  if (!def.has(abbr)) def.set(abbr, 0);
+}
+
 /** Convert American moneyline to implied probability (with vig). */
 function impliedProbFromMoneyline(ml) {
   if (ml == null || Number.isNaN(Number(ml))) return null;
@@ -70,20 +98,59 @@ function impliedProbFromMoneyline(ml) {
 /** Small numeric helpers */
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-/** Build a unique key for a game entry (avoid double-counting across teams) */
+/** Get ALL completed games this season across all teams (cached) */
+const _SEASON_FINALS_CACHE = new Map(); // season -> [{home,away,home_pts,away_pts,week}]
+
 function _seasonGameKey(g) {
-  // Prefer a real id if present; else use date + teams
-  if (g.id != null) return `id:${g.id}`;
+  if (g?.id != null) return `id:${g.id}`;
   const d = new Date(g.date || g.kickoff || g.start_time || 0);
   const y = d.getFullYear(), m = d.getMonth()+1, day = d.getDate();
   const k = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-  const ha = (g?.home_team?.abbreviation || g.home || "").toUpperCase();
-  const va = (g?.visitor_team?.abbreviation || g.away || "").toUpperCase();
+  const ha = canonAbbr(g?.home_team?.abbreviation || g.home || "");
+  const va = canonAbbr(g?.visitor_team?.abbreviation || g.away || "");
   return `${k}|${va}@${ha}`;
 }
 
+async function getSeasonFinals(season) {
+  if (_SEASON_FINALS_CACHE.has(season)) return _SEASON_FINALS_CACHE.get(season);
+
+  const teams = await getTeamsMap();
+  const finalsMap = new Map();
+
+  const pulls = [];
+  for (const [abbr, id] of teams.entries()) {
+    pulls.push(
+      fetchTeamGamesForSeason(id, season).then(list => {
+        for (const g of list || []) {
+          const final = isFinalGame(g) || /(final|completed)/i.test(String(g.status||""));
+          if (!final) continue;
+
+          const homeAbbr = canonAbbr(g?.home_team?.abbreviation || g.home || "");
+          const awayAbbr = canonAbbr(g?.visitor_team?.abbreviation || g.away || "");
+          const hs = Number(g.home_score ?? g.homeScore ?? NaN);
+          const vs = Number(g.visitor_score ?? g.awayScore ?? NaN);
+          if (!homeAbbr || !awayAbbr || !Number.isFinite(hs) || !Number.isFinite(vs)) continue;
+
+          const key = _seasonGameKey(g);
+          finalsMap.set(key, {
+            home: homeAbbr,
+            away: awayAbbr,
+            home_pts: hs,
+            away_pts: vs,
+            week: Number(g.week ?? g?.game?.week ?? NaN)
+          });
+        }
+      }).catch(()=>{})
+    );
+  }
+  await Promise.all(pulls);
+
+  const finals = Array.from(finalsMap.values());
+  _SEASON_FINALS_CACHE.set(season, finals);
+  return finals;
+}
+
 /** Get ALL completed games this season across all teams (cached) */
-const _SEASON_FINALS_CACHE = new Map(); // season -> [{home,away,home_pts,away_pts,week}]
 async function getSeasonFinals(season) {
   if (_SEASON_FINALS_CACHE.has(season)) return _SEASON_FINALS_CACHE.get(season);
 
@@ -130,10 +197,9 @@ async function getSeasonFinals(season) {
 }
 
 /** Fit simple offensive/defensive ratings + data-driven HFA using SGD on points.
- *  Model: E[home_pts] = off[home] - def[away] + HFA
- *         E[away_pts] = off[away] - def[home]
- */
+/** Fit offensive/defensive ratings + data-driven HFA using season finals */
 const _SEASON_RATINGS_CACHE = new Map(); // season -> { off:Map, def:Map, hfa:number, sigma:number }
+
 async function getSeasonRatings(season) {
   if (_SEASON_RATINGS_CACHE.has(season)) return _SEASON_RATINGS_CACHE.get(season);
 
@@ -144,28 +210,22 @@ async function getSeasonRatings(season) {
     return empty;
   }
 
-  // Teams set
   const teamSet = new Set();
   games.forEach(g => { teamSet.add(g.home); teamSet.add(g.away); });
 
-  // Init ratings at 0
   const off = new Map(), def = new Map();
   for (const t of teamSet) { off.set(t, 0); def.set(t, 0); }
 
-  // Initial HFA: mean(home_pts - away_pts)
-  let hfa = 0;
-  if (games.length) {
-    hfa = games.reduce((s,g)=> s + (g.home_pts - g.away_pts), 0) / games.length;
-  }
+  // Initial HFA from data
+  let hfa = games.reduce((s,g)=> s + (g.home_pts - g.away_pts), 0) / games.length;
 
-  // Exponential recency weights by week (if week missing, weight 1)
+  // Recency weights by week
   const weeks = games.map(g => g.week).filter(w => Number.isFinite(w));
   const maxWeek = weeks.length ? Math.max(...weeks) : null;
   const weekWeight = (w) => (Number.isFinite(w) && maxWeek != null) ? Math.pow(0.85, (maxWeek - w)) : 1;
 
-  // SGD
-  const LR = 0.015;
-  const EPOCHS = 10;
+  // SGD on points
+  const LR = 0.015, EPOCHS = 10;
   for (let epoch=0; epoch<EPOCHS; epoch++) {
     for (const g of games) {
       const w = weekWeight(g.week);
@@ -178,7 +238,6 @@ async function getSeasonRatings(season) {
       const errH = (g.home_pts - predH);
       const errA = (g.away_pts - predA);
 
-      // update offense/defense with coupled gradients
       off.set(g.home, oh + LR * w * errH);
       def.set(g.away, da - LR * w * errH);
 
@@ -186,26 +245,24 @@ async function getSeasonRatings(season) {
       def.set(g.home, dh - LR * w * errA);
     }
 
-    // Center ratings to avoid drift (mean zero)
+    // Center ratings
     const meanOff = Array.from(off.values()).reduce((a,b)=>a+b,0)/off.size;
     const meanDef = Array.from(def.values()).reduce((a,b)=>a+b,0)/def.size;
     for (const t of off.keys()) off.set(t, off.get(t) - meanOff);
     for (const t of def.keys()) def.set(t, def.get(t) - meanDef);
 
-    // Optional: lightly update HFA each epoch
-    // (error reduction on home margin)
+    // Adjust HFA slightly from margin errors
     let hErrSum=0, wSum=0;
     for (const g of games) {
       const w = weekWeight(g.week);
       const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
       const errM = (g.home_pts - g.away_pts) - predMargin;
-      hErrSum += w * errM;
-      wSum += w;
+      hErrSum += w * errM; wSum += w;
     }
     if (wSum > 0) hfa += (LR * 0.25) * (hErrSum / wSum);
   }
 
-  // Estimate sigma (point margin noise) for logistic conversion
+  // Sigma for logistic conversion (from margin RMSE)
   let sse = 0, n = 0;
   for (const g of games) {
     const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
@@ -213,24 +270,22 @@ async function getSeasonRatings(season) {
     sse += err*err; n++;
   }
   const rmse = n ? Math.sqrt(sse/n) : 7.0;
-  const sigma = Math.max(5.0, Math.min(12.0, rmse)); // keep in a reasonable NFL-ish band
+  const sigma = Math.max(5.0, Math.min(12.0, rmse));
 
   const out = { off, def, hfa, sigma };
   _SEASON_RATINGS_CACHE.set(season, out);
   return out;
 }
 
-/** Predict probability using season ratings (all finals this season) */
+/** Predict probability using season ratings (ALL finals this season) */
 async function predictSeasonProb({ season, homeAbbr, awayAbbr }) {
   const { off, def, hfa, sigma } = await getSeasonRatings(season);
-  const H = String(homeAbbr).toUpperCase();
-  const A = String(awayAbbr).toUpperCase();
+  const H = canonAbbr(homeAbbr);
+  const A = canonAbbr(awayAbbr);
 
-  // If a team is missing (shouldn’t happen), fall back gently
-  if (!off.has(H) || !off.has(A)) {
-    const pHome = probFromMargin(hfa, 7);
-    return { pHome, note: "Season model fallback (missing team rating)" };
-  }
+  // Ensure neutral entries exist (avoids missing-team fallback)
+  ensureTeamRating(off, def, H);
+  ensureTeamRating(off, def, A);
 
   const margin =
     (off.get(H) - def.get(A)) - (off.get(A) - def.get(H)) + hfa;
@@ -242,224 +297,172 @@ async function predictSeasonProb({ season, homeAbbr, awayAbbr }) {
   };
 }
 
+/** Pro odds fetcher (call with canonAbbr values) */
 async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
-  /** Remove the bookmaker vig by normalizing home/away implied probs. */
-  function devigNormalize(pHomeRaw, pAwayRaw) {
-    if (pHomeRaw == null || pAwayRaw == null) return null;
-    const sum = pHomeRaw + pAwayRaw;
-    if (sum <= 0) return null;
-    return { home: pHomeRaw / sum, away: pAwayRaw / sum };
-  }
+  const key = process.env.REACT_APP_BDL_KEY?.trim();
+  if (!key) return null;
+  const headers = { Accept: "application/json", Authorization: key };
 
-  /** Attempt to pull pro-tier moneylines for a specific game.
-   *  This is flexible on endpoint/shape so it won’t crash if the API differs.
-   *  It tries a couple of likely shapes and returns { mlHome, mlAway } or null.
-   *  Requires REACT_APP_BDL_KEY to be set.
-   */
-  /** Attempt to pull pro-tier moneylines for a specific game (robust parser). */
-  async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
-    const key = process.env.REACT_APP_BDL_KEY?.trim();
-    if (!key) return null;
+  const candidates = [
+    { path: "/odds",  params: { date: dateISO, sport: "nfl" } },
+    { path: "/games", params: { "dates[]": dateISO, include: "odds", sport: "nfl" } },
+  ];
+  const buildUrl = (base, path, params) => {
+    const u = new URL(`${BDL_API}${path}`);
+    Object.entries(params || {}).forEach(([k, v]) => u.searchParams.append(k, v));
+    if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
+    return u.toString();
+  };
+  const same = (a,b) => canonAbbr(a) === canonAbbr(b);
 
-    const headers = { Accept: "application/json", Authorization: key };
+  const readPairFromUnknown = (container) => {
+    if (!container || typeof container !== "object") return { home: null, away: null };
 
-    // If your pro docs specify a canonical endpoint, use it here.
-    const candidates = [
-      { path: "/odds", params: { date: dateISO, sport: "nfl" } },
-      { path: "/games", params: { "dates[]": dateISO, include: "odds", sport: "nfl" } },
+    const flatKeys = (side) => [
+      `${side}_moneyline`, `${side}_ml`, `${side}_price`,
+      side === "home" ? "ml_home" : "ml_away",
+      side === "home" ? "moneyline_home" : "moneyline_away",
+      side === "home" ? "homePrice" : "awayPrice",
+      side === "home" ? "homeMoneyline" : "awayMoneyline",
     ];
+    const readFlat = (side) => {
+      for (const k of flatKeys(side)) {
+        const v = container?.[k];
+        if (v != null) return Number(v);
+      }
+      return null;
+    };
+    let mlHome = readFlat("home");
+    let mlAway = readFlat("away");
+    if (mlHome != null && mlAway != null) return { home: mlHome, away: mlAway };
 
-    const buildUrl = (base, path, params) => {
-      const u = new URL(`${base}${path}`);
-      Object.entries(params || {}).forEach(([k, v]) => u.searchParams.append(k, v));
-      if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
-      return u.toString();
+    const tryOutcomes = (obj) => {
+      const out = Array.isArray(obj?.outcomes) ? obj.outcomes : Array.isArray(obj) ? obj : [];
+      if (!out.length) return { home: null, away: null };
+      const pickPrice = (o) => {
+        const p = o?.price ?? o?.american ?? o?.moneyline ?? o?.ml ?? o?.odds;
+        return p != null ? Number(p) : null;
+      };
+      const hCand =
+        out.find(o => /(home|h)/i.test(String(o.side || o.role || o.selection || ""))) ||
+        out.find(o => same(o.team?.abbreviation, container?.home_team?.abbreviation));
+      const aCand =
+        out.find(o => /(away|a|visitor)/i.test(String(o.side || o.role || o.selection || ""))) ||
+        out.find(o => same(o.team?.abbreviation, container?.visitor_team?.abbreviation) ||
+                      same(o.team?.abbreviation, container?.away_team?.abbreviation));
+      return { home: pickPrice(hCand), away: pickPrice(aCand) };
     };
 
-    // Team matching helper: compare abbreviations case-insensitively
-    const sameAbbr = (a, b) => String(a || "").toUpperCase() === String(b || "").toUpperCase();
-
-    // Extract moneylines from a very wide variety of shapes.
-    const readPairFromUnknown = (container) => {
-      if (!container || typeof container !== "object") return { home: null, away: null };
-
-      // 1) Flat fields on container
-      const flatKeys = (side) => [
-        `${side}_moneyline`, `${side}_ml`, `${side}_price`,
-        side === "home" ? "ml_home" : "ml_away",
-        side === "home" ? "moneyline_home" : "moneyline_away",
-        side === "home" ? "homePrice" : "awayPrice",
-        side === "home" ? "homeMoneyline" : "awayMoneyline",
-      ];
-      const readFlat = (side) => {
-        for (const k of flatKeys(side)) {
-          const v = container?.[k];
-          if (v != null) return Number(v);
-        }
-        return null;
-      };
-      let mlHome = readFlat("home");
-      let mlAway = readFlat("away");
-      if (mlHome != null && mlAway != null) return { home: mlHome, away: mlAway };
-
-      // 2) outcomes array: markets[].outcomes[] with { name/side/selection, price/american }
-      const tryOutcomes = (obj) => {
-        const out = Array.isArray(obj?.outcomes) ? obj.outcomes : Array.isArray(obj) ? obj : [];
-        if (!out.length) return { home: null, away: null };
-        const pickPrice = (o) => {
-          if (o == null) return null;
-          const p = o.price ?? o.american ?? o.moneyline ?? o.ml ?? o.odds;
-          return p != null ? Number(p) : null;
-        };
-        // try to resolve which outcome is home/away
-        const hCand = out.find(o => /(home|h)/i.test(String(o.side || o.role || o.selection || ""))) ||
-                      out.find(o => sameAbbr(o.team?.abbreviation, container?.home_team?.abbreviation));
-        const aCand = out.find(o => /(away|a|visitor)/i.test(String(o.side || o.role || o.selection || ""))) ||
-                      out.find(o => sameAbbr(o.team?.abbreviation, container?.visitor_team?.abbreviation) ||
-                                    sameAbbr(o.team?.abbreviation, container?.away_team?.abbreviation));
-        const h = pickPrice(hCand);
-        const a = pickPrice(aCand);
-        return { home: h ?? null, away: a ?? null };
-      };
-
-      // 3) books/markets shapes
-      const books = container?.books || container?.offers || null;
-      if (Array.isArray(books) && books.length) {
-        // pick first book with a moneyline market
-        for (const book of books) {
-          const markets = book?.markets || book?.lines || book?.offers || null;
-          if (!markets) continue;
-          const arr = Array.isArray(markets) ? markets : [markets];
-          // try to find a market named "moneyline"
-          let mlMarket =
-            arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) ||
-            arr[0];
-          if (!mlMarket) continue;
-
-          // Sometimes the prices are directly on market as home/away fields
-          let { home, away } = readPairFromUnknown(mlMarket);
-          if (home != null && away != null) return { home, away };
-
-          // Or inside outcomes
-          const o = tryOutcomes(mlMarket);
-          if (o.home != null && o.away != null) return o;
-        }
-      }
-
-      // 4) markets directly on container
-      const markets = container?.markets || container?.odds || container?.market || null;
-      if (markets) {
+    const books = container?.books || container?.offers || null;
+    if (Array.isArray(books) && books.length) {
+      for (const book of books) {
+        const markets = book?.markets || book?.lines || book?.offers || null;
+        if (!markets) continue;
         const arr = Array.isArray(markets) ? markets : [markets];
         let mlMarket =
-          arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) ||
-          arr[0];
-        if (mlMarket) {
-          // Same attempts as above
-          let { home, away } = readPairFromUnknown(mlMarket);
-          if (home != null && away != null) return { home, away };
-          const o = tryOutcomes(mlMarket);
-          if (o.home != null && o.away != null) return o;
-        }
-      }
+          arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) || arr[0];
+        if (!mlMarket) continue;
 
-      // 5) Try outcomes at root
-      const o = tryOutcomes(container);
-      if (o.home != null && o.away != null) return o;
+        let { home, away } = readPairFromUnknown(mlMarket);
+        if (home != null && away != null) return { home, away };
 
-      return { home: null, away: null };
-    };
-
-    for (const c of candidates) {
-      try {
-        const url = buildUrl(BDL_API, c.path, c.params);
-        const r = await fetch(url, { headers });
-        if (!r.ok) continue;
-        const j = await r.json();
-
-        const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
-        if (!list.length) continue;
-
-        const row = list.find(item => {
-          // try to get abbrevs in a few shapes
-          const h =
-            item?.home_team?.abbreviation ??
-            item?.homeTeam?.abbreviation ??
-            item?.home_abbr ?? item?.home;
-          const a =
-            item?.visitor_team?.abbreviation ??
-            item?.away_team?.abbreviation ??
-            item?.awayTeam?.abbreviation ??
-            item?.away_abbr ?? item?.away;
-          return sameAbbr(h, homeAbbr) && sameAbbr(a, awayAbbr);
-        });
-        if (!row) continue;
-
-        const { home, away } = readPairFromUnknown(row);
-        if (home != null && away != null) return { mlHome: home, mlAway: away };
-
-        // Sometimes odds live on a nested "odds" / "book" node separate from row
-        const nestedSources = [row?.odds, row?.book, row?.books, row?.markets, row?.offers].flat().filter(Boolean);
-        for (const src of (Array.isArray(nestedSources) ? nestedSources : [nestedSources])) {
-          const p = readPairFromUnknown(src);
-          if (p.home != null && p.away != null) return { mlHome: p.home, mlAway: p.away };
-        }
-      } catch (e) {
-        // swallow and try next
-        // console.debug("[BDL Pro] candidate failed", c.path, e);
-        continue;
+        const o = tryOutcomes(mlMarket);
+        if (o.home != null && o.away != null) return o;
       }
     }
-    return null;
+
+    const markets = container?.markets || container?.odds || container?.market || null;
+    if (markets) {
+      const arr = Array.isArray(markets) ? markets : [markets];
+      let mlMarket =
+        arr.find(m => /moneyline/i.test(m?.key || m?.market || m?.name || m?.type || "")) || arr[0];
+      if (mlMarket) {
+        let { home, away } = readPairFromUnknown(mlMarket);
+        if (home != null && away != null) return { home, away };
+        const o = tryOutcomes(mlMarket);
+        if (o.home != null && o.away != null) return o;
+      }
+    }
+
+    const o = tryOutcomes(container);
+    if (o.home != null && o.away != null) return o;
+
+    return { home: null, away: null };
+  };
+
+  for (const c of candidates) {
+    try {
+      const r = await fetch(buildUrl(BDL_API, c.path, c.params), { headers });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
+      if (!list.length) continue;
+
+      const row = list.find(item => {
+        const h = item?.home_team?.abbreviation ?? item?.homeTeam?.abbreviation ?? item?.home_abbr ?? item?.home;
+        const a = item?.visitor_team?.abbreviation ?? item?.away_team?.abbreviation ?? item?.awayTeam?.abbreviation ?? item?.away_abbr ?? item?.away;
+        return same(h, homeAbbr) && same(a, awayAbbr);
+      });
+      if (!row) continue;
+
+      const p1 = readPairFromUnknown(row);
+      if (p1.home != null && p1.away != null) return { mlHome: p1.home, mlAway: p1.away };
+
+      const nested = [row?.odds, row?.book, row?.books, row?.markets, row?.offers].flat().filter(Boolean);
+      for (const src of (Array.isArray(nested) ? nested : [nested])) {
+        const p = readPairFromUnknown(src);
+        if (p.home != null && p.away != null) return { mlHome: p.home, mlAway: p.away };
+      }
+    } catch { /* try next */ }
   }
+  return null;
 }
-/** Returns { home, away, note } using ALL signals:
- *  - BDL Pro moneylines (de-vigged)
+
+
+/** Returns { home, away, note } using:
+ *  - BDL Pro moneylines (de-vigged) if available
  *  - Season-wide model from ALL completed games this season
- *  Blends them for a robust final probability.
+ *  Blended for robustness (70% market / 30% model).
  */
 async function getWinProbabilityForGame(g) {
   const season = new Date(g.kickoff).getFullYear();
-  const homeAbbr = g.home, awayAbbr = g.away;
+  const homeAbbr = canonAbbr(g.home);
+  const awayAbbr = canonAbbr(g.away);
 
-  // 1) Season model (always try; it’s local & robust)
+  // Season model (always try)
   const seasonRes = await predictSeasonProb({ season, homeAbbr, awayAbbr });
   const pModel = seasonRes?.pHome ?? null;
 
-  // 2) Market odds (Pro)
+  // Market odds (Pro)
   const d = new Date(g.kickoff);
   const dateISO = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   const pro = await fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr });
-  let pMarket = null, note = "";
+
+  let pMarket = null;
   if (pro?.mlHome != null && pro?.mlAway != null) {
     const pHraw = impliedProbFromMoneyline(pro.mlHome);
     const pAraw = impliedProbFromMoneyline(pro.mlAway);
-    const devig = (function devigNormalize(pHomeRaw, pAwayRaw) {
-      if (pHomeRaw == null || pAwayRaw == null) return null;
-      const sum = pHomeRaw + pAwayRaw;
-      if (sum <= 0) return null;
-      return { home: pHomeRaw / sum, away: pAwayRaw / sum };
-    })(pHraw, pAraw);
-    if (devig) {
-      pMarket = devig.home;
+    const sum = (pHraw ?? 0) + (pAraw ?? 0);
+    if (pHraw != null && pAraw != null && sum > 0) {
+      pMarket = pHraw / sum; // de-vig normalize
     }
   }
 
-  // 3) Blend (prefer market, keep model signal)
-  let pHome = null;
+  // Blend
+  let pHome, note;
   if (pMarket != null && pModel != null) {
-    const ALPHA = 0.7; // 70% market, 30% model
-    pHome = clamp01(ALPHA * pMarket + (1-ALPHA) * pModel);
+    const ALPHA = 0.70;
+    pHome = Math.max(0, Math.min(1, ALPHA * pMarket + (1 - ALPHA) * pModel));
     note = `Blended: Market (70%) + ${seasonRes.note}`;
   } else if (pMarket != null) {
-    pHome = clamp01(pMarket);
+    pHome = pMarket;
     note = `Based on BDL Pro moneylines (de-vigged).`;
   } else if (pModel != null) {
-    pHome = clamp01(pModel);
+    pHome = pModel;
     note = seasonRes.note;
   } else {
-    // absolute fallback
     const HFA = 2.0;
-    pHome = probFromMargin(HFA, 7);
+    pHome = 1 / (1 + Math.exp(-HFA / 7));
     note = "Fallback: HFA only";
   }
 
