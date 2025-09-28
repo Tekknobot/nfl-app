@@ -56,6 +56,153 @@ function gameKey(g) {
   return `${key}|${(g.away || "").toUpperCase()}@${(g.home || "").toUpperCase()}`;
 }
 
+/** Convert American moneyline to implied probability (with vig). */
+function impliedProbFromMoneyline(ml) {
+  if (ml == null || Number.isNaN(Number(ml))) return null;
+  const n = Number(ml);
+  if (n > 0) return 100 / (n + 100);
+  if (n < 0) return -n / (-n + 100);
+  return null;
+}
+
+/** Remove the bookmaker vig by normalizing home/away implied probs. */
+function devigNormalize(pHomeRaw, pAwayRaw) {
+  if (pHomeRaw == null || pAwayRaw == null) return null;
+  const sum = pHomeRaw + pAwayRaw;
+  if (sum <= 0) return null;
+  return { home: pHomeRaw / sum, away: pAwayRaw / sum };
+}
+
+/** Attempt to pull pro-tier moneylines for a specific game.
+ *  This is flexible on endpoint/shape so it won’t crash if the API differs.
+ *  It tries a couple of likely shapes and returns { mlHome, mlAway } or null.
+ *  Requires REACT_APP_BDL_KEY to be set.
+ */
+async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
+  const key = process.env.REACT_APP_BDL_KEY?.trim();
+  if (!key) return null;
+
+  const headers = { Accept: "application/json", Authorization: key };
+
+  // A small set of candidates. If your pro docs specify an exact path/params,
+  // replace this with the canonical one (e.g., /odds?date=YYYY-MM-DD).
+  const candidates = [
+    { path: "/odds", params: { date: dateISO } },
+    { path: "/games", params: { "dates[]": dateISO, include: "odds" } },
+  ];
+
+  // Utility to build URL with params
+  const buildUrl = (base, path, params) => {
+    const u = new URL(`${base}${path}`);
+    Object.entries(params || {}).forEach(([k, v]) => u.searchParams.append(k, v));
+    // allow up to 100/page if supported
+    if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
+    return u.toString();
+  };
+
+  // Try each endpoint candidate
+  for (const c of candidates) {
+    try {
+      const url = buildUrl(BDL_API, c.path, c.params);
+      const r = await fetch(url, { headers });
+      if (!r.ok) continue;
+      const j = await r.json();
+
+      // Normalize list from common shapes
+      const list = Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
+      
+      // Find matching event by team abbreviations
+      const row = list.find(item => {
+        // common shapes for home/away team abbrev fields
+        const h =
+          item?.home_team?.abbreviation ??
+          item?.homeTeam?.abbreviation ??
+          item?.home_abbr ??
+          item?.home;
+        const a =
+          item?.visitor_team?.abbreviation ??
+          item?.away_team?.abbreviation ??
+          item?.awayTeam?.abbreviation ??
+          item?.away_abbr ??
+          item?.away;
+        return String(h).toUpperCase() === String(homeAbbr).toUpperCase() &&
+               String(a).toUpperCase() === String(awayAbbr).toUpperCase();
+      });
+      if (!row) continue;
+
+      // Pull moneylines from the row
+      // Try common shapes (adjust to your pro docs if you know them)
+      const markets =
+        row?.odds ||
+        row?.markets ||
+        row?.book || // some APIs wrap per-book
+        null;
+
+      // Helper to read ML from a market/book shape
+      const readML = (obj, side /* "home"|"away" */) => {
+        if (!obj) return null;
+        // common field names
+        const keys = [
+          `${side}_moneyline`, `${side}_ml`, `${side}_price`,
+          side === "home" ? "ml_home" : "ml_away",
+          side === "home" ? "moneyline_home" : "moneyline_away",
+        ];
+
+/** Returns { home, away, note }, preferring BDL Pro moneylines (de-vigged),
+ *  and falling back to the simple form model you already have.
+ */
+async function getWinProbabilityForGame(g) {
+  const d = new Date(g.kickoff);
+  const dateISO = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
+  // 1) Try Pro moneylines
+  const pro = await fetchGameMoneylinesBDLPro({
+    dateISO,
+    homeAbbr: g.home,
+    awayAbbr: g.away,
+  });
+  if (pro?.mlHome != null && pro?.mlAway != null) {
+    const pHraw = impliedProbFromMoneyline(pro.mlHome);
+    const pAraw = impliedProbFromMoneyline(pro.mlAway);
+    const devig = devigNormalize(pHraw, pAraw);
+    if (devig) {
+      return {
+        home: devig.home,
+        away: devig.away,
+        note: `Based on BDL Pro moneylines (de-vigged).`,
+      };
+    }
+  }
+
+  // 2) Fall back to your existing form model
+  const season = new Date(g.kickoff).getFullYear();
+  const [homeForm, awayForm] = await Promise.all([
+    getTeamFormFromPastGames(g.home, season),
+    getTeamFormFromPastGames(g.away, season),
+  ]);
+
+  const HFA = 2.0;
+  let margin, note = "Based on recent completed games (this & last season)";
+  if (
+    homeForm.ppg != null && homeForm.oppg != null &&
+    awayForm.ppg != null && awayForm.oppg != null
+  ) {
+    const homeOff = homeForm.ppg;
+    const awayDef = awayForm.oppg;
+    const awayOff = awayForm.ppg;
+    const homeDef = homeForm.oppg;
+    margin = (homeOff - awayDef) - (awayOff - homeDef) + HFA;
+  } else if (homeForm.ppg != null && awayForm.ppg != null) {
+    margin = (homeForm.ppg - awayForm.ppg) + HFA;
+    note = "Based on recent points per game (limited finals available)";
+  } else {
+    margin = HFA;
+    note = "Insufficient past-game data; home advantage only";
+  }
+  const pHome = probFromMargin(margin, 7);
+  return { home: pHome, away: 1 - pHome, note };
+}
+
 async function fetchLiveGameBDL({ dateISO, homeAbbr, awayAbbr }) {
   const headers = bdlHeaders();
   const u = new URL(`${BDL_API}/games`);
@@ -504,50 +651,26 @@ useEffect(() => {
   }, [selectedGames, liveByKey]);
 
 
-  // Compute win probability when a game is opened (same model as before)
-  useEffect(()=>{
+  // Compute win probability when a game is opened (BDL Pro moneylines → fallback form model)
+  useEffect(() => {
     let cancelled = false;
+
     async function computeProb() {
       setProb(null);
       setProbNote("");
       if (!selected?.g) return;
+
       setProbLoading(true);
       try {
-        const g = selected.g;
-        const season = new Date(g.kickoff).getFullYear();
-        const homeAbbr = g.home;
-        const awayAbbr = g.away;
-
-        const [homeForm, awayForm] = await Promise.all([
-          getTeamFormFromPastGames(homeAbbr, season),
-          getTeamFormFromPastGames(awayAbbr, season)
-        ]);
-
-        const HFA = 2.0;
-        let note = "Based on recent completed games (this & last season)";
-        let margin;
-
-        if (
-          homeForm.ppg != null && homeForm.oppg != null &&
-          awayForm.ppg != null && awayForm.oppg != null
-        ) {
-          const homeOff = homeForm.ppg;
-          const awayDef = awayForm.oppg;
-          const awayOff = awayForm.ppg;
-          const homeDef = homeForm.oppg;
-          margin = (homeOff - awayDef) - (awayOff - homeDef) + HFA;
-        } else if (homeForm.ppg != null && awayForm.ppg != null) {
-          margin = (homeForm.ppg - awayForm.ppg) + HFA;
-          note = "Based on recent points per game (limited finals available)";
-        } else {
-          margin = HFA;
-          note = "Insufficient past-game data; home advantage only";
-        }
-
-        const pHome = probFromMargin(margin, 7);
+        const res = await getWinProbabilityForGame(selected.g); // uses Pro first, then fallback
         if (!cancelled) {
-          setProb({ home: pHome, away: 1 - pHome });
-          setProbNote(note);
+          if (res) {
+            setProb({ home: res.home, away: res.away });
+            setProbNote(res.note || "Based on market lines.");
+          } else {
+            setProb(null);
+            setProbNote("Probability unavailable.");
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -558,8 +681,9 @@ useEffect(() => {
         if (!cancelled) setProbLoading(false);
       }
     }
+
     computeProb();
-    return ()=>{ cancelled = true; };
+    return () => { cancelled = true; };
   }, [selected]);
 
   // Live status / final score updater for the open game
