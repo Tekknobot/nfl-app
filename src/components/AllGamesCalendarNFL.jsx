@@ -219,10 +219,10 @@ function DayPill({ d, selected, count, finalCount = 0, allFinal = false, onClick
   );
 }
 
-
 function GameRow({ g, onClick }) {
   const isFinal = /final/i.test(g.status || "");
   const hasScore = (g.homeScore != null && g.awayScore != null);
+  const hasStatus = Boolean(g.status);
 
   return (
     <Card
@@ -249,33 +249,35 @@ function GameRow({ g, onClick }) {
             >
               {g.away} @ {g.home}
             </Typography>
-            <Typography variant="caption" sx={{ opacity:.8 }}>
+            <Typography variant="caption" sx={{ opacity:.8, display:'block' }}>
               {fmtTime(g.kickoff)}
-              {g.status && !isFinal && ` · ${g.status}`}
             </Typography>
           </Box>
 
-          {/* Right-side status/score */}
-          {hasScore ? (
-            <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: 'center' }}>
+          {/* Right-side: status + score (if present) */}
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: 'center' }}>
+            {hasStatus && (
               <Chip
                 size="small"
                 color={isFinal ? "success" : "default"}
-                label={isFinal ? "Final" : "In Progress"}
+                label={isFinal ? "Final" : g.status}
               />
+            )}
+            {hasScore ? (
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
                 {g.away} {g.awayScore} — {g.home} {g.homeScore}
               </Typography>
-            </Stack>
-          ) : (
-            <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
-          )}
+            ) : (
+              !hasStatus && (
+                <Chip size="small" variant="outlined" icon={<SportsFootballIcon fontSize="small" />} label="Details" />
+              )
+            )}
+          </Stack>
         </Stack>
       </ListItemButton>
     </Card>
   );
 }
-
 
 /* ---------- Main Component ---------- */
 export default function AllGamesCalendarNFL(){
