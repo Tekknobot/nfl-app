@@ -181,13 +181,17 @@ async function getSeasonFinals(season) {
     pulls.push(
       fetchTeamGamesForSeason(id, season).then(list => {
         for (const g of list || []) {
-          const final = isFinalGame(g) || /(final|completed)/i.test(String(g.status||""));
-          if (!final) continue;
+          if (!isFinalGame(g)) continue;
 
           const homeAbbr = canonAbbr(g?.home_team?.abbreviation || g.home || "");
           const awayAbbr = canonAbbr(g?.visitor_team?.abbreviation || g.away || "");
-          const hs = Number(g.home_score ?? g.homeScore ?? NaN);
-          const vs = Number(g.visitor_score ?? g.awayScore ?? NaN);
+          // 🔧 robust score extraction
+          const hs = Number(
+            g?.home_team_score ?? g?.home_score ?? g?.homeScore ?? NaN
+          );
+          const vs = Number(
+            g?.visitor_team_score ?? g?.away_score ?? g?.awayScore ?? NaN
+          );
           if (!homeAbbr || !awayAbbr || !Number.isFinite(hs) || !Number.isFinite(vs)) continue;
 
           finalsMap.set(_seasonGameKey(g), {
@@ -195,7 +199,7 @@ async function getSeasonFinals(season) {
             away: awayAbbr,
             home_pts: hs,
             away_pts: vs,
-            week: Number(g.week ?? g?.game?.week ?? NaN)
+            week: Number(g?.week ?? g?.game?.week ?? NaN),
           });
         }
       }).catch(()=>{})
@@ -554,8 +558,15 @@ async function fetchTeamGamesForSeason(teamId, seasonYear) {
 }
 
 function isFinalGame(g) {
-  const hasScores = typeof g.home_score === "number" && typeof g.visitor_score === "number";
-  const looksFinal = (g.status || "").toLowerCase().includes("final");
+  // tolerate multiple shapes
+  const hs =
+    g?.home_team_score ?? g?.home_score ?? g?.homeScore ?? null;
+  const vs =
+    g?.visitor_team_score ?? g?.away_score ?? g?.awayScore ?? null;
+
+  const hasScores = Number.isFinite(Number(hs)) && Number.isFinite(Number(vs));
+  const looksFinal = /(final|completed|full\s*time|^ft$|ended|complete)/i
+    .test(String(g?.status || ""));
   return hasScores || looksFinal;
 }
 
