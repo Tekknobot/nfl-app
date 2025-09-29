@@ -928,10 +928,24 @@ export default function AllGamesCalendarNFL(){
 
   // Auto-select first day with games when week changes
   useEffect(() => {
-    const first = week.find(d => gamesFor(d).length > 0) || week[0];
-    setSelectedDate(first);
+    const today = new Date();
+    const todayKey = dateKey(today);
 
-    const key = dateKey(first);
+    // Is today within the current week?
+    const inThisWeek = week.some(d => dateKey(d) === todayKey);
+
+    // Prefer today if we're in this week (whether or not there are games today),
+    // otherwise prefer the first day with games, else the week's first day.
+    let target = inThisWeek ? today : week[0];
+
+    const hasGamesToday = inThisWeek && gamesFor(today).length > 0;
+    const firstWithGames = week.find(d => gamesFor(d).length > 0);
+
+    if (!hasGamesToday && firstWithGames) target = firstWithGames;
+
+    setSelectedDate(target);
+
+    const key = dateKey(target);
     const id = setTimeout(() => {
       const el = stripRef.current?.querySelector?.(`[data-day="${key}"]`);
       if (el) el.scrollIntoView({ inline: "center", behavior: "smooth", block: "nearest" });
