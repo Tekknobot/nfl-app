@@ -44,7 +44,7 @@ export default function Header() {
         <Box
           component={Link}
           to="/"
-          aria-label="SNAPP.C home"
+          aria-label="SNP.COUNT home"
           sx={{
             display: "flex",
             alignItems: "center",
@@ -67,7 +67,7 @@ export default function Header() {
               mr: 1
             }}
           >
-            S.COUNT
+            SNP.COUNT
           </Typography>
         </Box>
 
