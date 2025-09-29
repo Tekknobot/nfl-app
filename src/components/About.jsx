@@ -37,22 +37,61 @@ export default function About() {
           <CardContent>
             <Typography variant="h5" sx={{ mb: 1 }}>How the Win Probability Works</Typography>
             <Divider sx={{ mb: 2 }} />
+
             <Typography sx={{ mb: 1 }}>
-              SNAPPCOUNT computes a simple estimate for the home team’s win chance using past completed games:
+              SNAPPCOUNT estimates the home team’s win chance using a blend of market odds and a season model:
             </Typography>
-            <Typography component="div" sx={{ pl: 2 }}>
+
+            <Typography component="div" sx={{ pl: 2, mb: 1 }}>
               <ul style={{ margin: 0, paddingLeft: "1em" }}>
-                <li>Pull recent finals from current & previous season (BallDon’tLie /games, free tier).</li>
-                <li>Compute team averages: points per game (PPG) and points allowed (OPPG).</li>
-                <li>Expected margin ≈ (Home PPG − Away OPPG) − (Away PPG − Home OPPG) + ~2 pts home edge.</li>
-                <li>Convert margin → probability with a logistic curve (~7 pts ≈ 70%).</li>
+                <li>
+                  <strong>Market (BDL Pro moneylines)</strong>: Convert American odds to implied probabilities,
+                  remove the bookmaker’s vig by normalizing home/away, and use this as the market prior.
+                </li>
+                <li>
+                  <strong>Season model (all finals this season)</strong>: For every completed game this season,
+                  fit per-team <em>Offense</em> and <em>Defense</em> ratings via SGD on points with recency weighting
+                  (newer weeks count more), and learn <em>Home-Field Advantage</em> from the data.
+                </li>
+                <li>
+                  <strong>Prediction</strong>: Expected margin = (Home Off − Away Def) − (Away Off − Home Def) + HFA.
+                  Convert margin → win probability with a logistic curve using a σ calibrated from margin RMSE.
+                </li>
+                <li>
+                  <strong>Blend</strong>: Final win prob = 70% Market + 30% Season Model (if both are available).
+                </li>
               </ul>
             </Typography>
+
+            <Typography component="div" sx={{ pl: 2, mb: 1 }}>
+              <ul style={{ margin: 0, paddingLeft: "1em" }}>
+                <li>
+                  <strong>Data sources</strong>: BallDon’tLie NFL endpoints (<code>/games</code> for season finals & live scores; Pro odds for moneylines).
+                  Team codes are canonicalized (e.g., <code>JAC→JAX</code>, <code>WAS→WSH</code>).
+                </li>
+                <li>
+                  <strong>Recency</strong>: Later weeks get higher weight (exponential decay) when fitting ratings.
+                </li>
+                <li>
+                  <strong>Fallbacks</strong>: If odds are unavailable, use season model only; if the season has no finals yet,
+                  fall back to a small home edge until results arrive.
+                </li>
+              </ul>
+            </Typography>
+
+            <Typography sx={{ mb: 1 }}>
+              For games that are <strong>Final</strong>, the drawer also shows a verdict:
+              <em>Model: Correct</em> or <em>Model: Upset</em>, based on whether the model’s pick (with its confidence)
+              matched the actual winner.
+            </Typography>
+
             <Typography sx={{ opacity: .8 }}>
-              If no recent finals exist yet, it falls back to a small home field edge until results arrive.
+              The note beneath the progress bar summarizes what drove the number (e.g., week span, sample size, learned HFA, σ),
+              or indicates if the estimate fell back to market-only or home-edge-only.
             </Typography>
           </CardContent>
         </Card>
+
       </Stack>
     </Box>
   );
