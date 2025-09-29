@@ -137,6 +137,30 @@ function canonAbbr(x) {
   return map[k] || k;
 }
 
+// Verdict for final games: was the model pick correct?
+function verdictForGame(g, prob) {
+  // final?
+  const isFinal =
+    /(final|completed|full\s*time|^ft$|ended|complete)/i.test(String(g?.status || "")) ||
+    (Number.isFinite(Number(g?.homeScore)) && Number.isFinite(Number(g?.awayScore)));
+
+  if (!isFinal) return null;
+
+  // robust score read
+  const hs = scoreNum(g?.homeScore ?? g?.home_score ?? g?.home_points ?? g?.home_final);
+  const as = scoreNum(g?.awayScore ?? g?.away_score ?? g?.away_points ?? g?.visitor_score ?? g?.away_final);
+  if (hs == null || as == null || hs === as) return { final: true, tie: true };
+
+  const actual = hs > as ? "home" : "away";
+  if (!prob || typeof prob.home !== "number" || typeof prob.away !== "number") {
+    return { final: true, actual, predicted: null, correct: null, confidence: null };
+  }
+
+  const predicted = prob.home >= prob.away ? "home" : "away";
+  const confidence = Math.max(prob.home, prob.away); // 0..1
+  return { final: true, actual, predicted, correct: predicted === actual, confidence };
+}
+
 // Ensure a team exists in the ratings with neutral 0 values
 function ensureTeamRating(off, def, abbr) {
   if (!off.has(abbr)) off.set(abbr, 0);
@@ -1211,6 +1235,43 @@ export default function AllGamesCalendarNFL(){
                   </Typography>
                 </Stack>
               )}
+
+              {/* Verdict: was the model correct (finals only)? */}
+              {(() => {
+                const v = verdictForGame(selected.g, prob);
+                if (!v || v.tie) return null;
+
+                const picked =
+                  v.predicted === "home" ? selected.g.home :
+                  v.predicted === "away" ? selected.g.away : null;
+
+                const actual =
+                  v.actual === "home" ? selected.g.home :
+                  v.actual === "away" ? selected.g.away : null;
+
+                const confPct = v.confidence != null ? ` ${(v.confidence * 100).toFixed(1)}%` : "";
+
+                return (
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <Chip
+                      size="small"
+                      color={v.correct === true ? "success" : (v.correct === false ? "error" : "default")}
+                      label={
+                        v.correct === true
+                          ? "Model: Correct"
+                          : v.correct === false
+                            ? "Model: Upset"
+                            : "Model: Unknown"
+                      }
+                    />
+                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                      {picked
+                        ? `Picked ${picked}${confPct} · Actual ${actual}`
+                        : `No pick available`}
+                    </Typography>
+                  </Stack>
+                );
+              })()}
 
               {/* Win probability block */}
               <Box sx={{ my:2 }}>
