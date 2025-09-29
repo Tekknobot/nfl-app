@@ -150,17 +150,22 @@ async function getSeasonFinals(season) {
 }
 
 /** Fit offensive/defensive ratings + data-driven HFA using season finals */
-const _SEASON_RATINGS_CACHE = new Map(); // season -> { off:Map, def:Map, hfa:number, sigma:number }
+const _SEASON_RATINGS_CACHE = new Map(); // season -> { off, def, hfa, sigma, meta }
 
 async function getSeasonRatings(season) {
   if (_SEASON_RATINGS_CACHE.has(season)) return _SEASON_RATINGS_CACHE.get(season);
 
   const games = await getSeasonFinals(season);
   if (!games.length) {
-    const empty = { off:new Map(), def:new Map(), hfa:2.0, sigma:7.0 };
+    const empty = { off:new Map(), def:new Map(), hfa:2.0, sigma:7.0, meta:{ nGames:0, wMin:null, wMax:null } };
     _SEASON_RATINGS_CACHE.set(season, empty);
     return empty;
   }
+
+  // week metadata
+  const weeks = games.map(g => g.week).filter(w => Number.isFinite(w));
+  const wMin = weeks.length ? Math.min(...weeks) : null;
+  const wMax = weeks.length ? Math.max(...weeks) : null;
 
   const teamSet = new Set();
   games.forEach(g => { teamSet.add(g.home); teamSet.add(g.away); });
@@ -172,9 +177,7 @@ async function getSeasonRatings(season) {
   let hfa = games.reduce((s,g)=> s + (g.home_pts - g.away_pts), 0) / games.length;
 
   // Recency weights by week
-  const weeks = games.map(g => g.week).filter(w => Number.isFinite(w));
-  const maxWeek = weeks.length ? Math.max(...weeks) : null;
-  const weekWeight = (w) => (Number.isFinite(w) && maxWeek != null) ? Math.pow(0.85, (maxWeek - w)) : 1;
+  const weekWeight = (w) => (Number.isFinite(w) && wMax != null) ? Math.pow(0.85, (wMax - w)) : 1;
 
   // SGD on points
   const LR = 0.015, EPOCHS = 10;
@@ -214,28 +217,28 @@ async function getSeasonRatings(season) {
     if (wSum > 0) hfa += (LR * 0.25) * (hErrSum / wSum);
   }
 
-  // Sigma for logistic conversion (from margin RMSE)
-  let sse = 0, n = 0;
+  // Sigma from margin RMSE
+  let sse = 0;
   for (const g of games) {
     const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
     const err = (g.home_pts - g.away_pts) - predMargin;
-    sse += err*err; n++;
+    sse += err*err;
   }
+  const n = games.length;
   const rmse = n ? Math.sqrt(sse/n) : 7.0;
   const sigma = Math.max(5.0, Math.min(12.0, rmse));
 
-  const out = { off, def, hfa, sigma };
+  const out = { off, def, hfa, sigma, meta: { nGames: n, wMin, wMax } };
   _SEASON_RATINGS_CACHE.set(season, out);
   return out;
 }
 
 /** Predict probability using season ratings (ALL finals this season) */
 async function predictSeasonProb({ season, homeAbbr, awayAbbr }) {
-  const { off, def, hfa, sigma } = await getSeasonRatings(season);
+  const { off, def, hfa, sigma, meta } = await getSeasonRatings(season);
   const H = canonAbbr(homeAbbr);
   const A = canonAbbr(awayAbbr);
 
-  // Ensure neutral entries exist (avoids missing-team fallback)
   ensureTeamRating(off, def, H);
   ensureTeamRating(off, def, A);
 
@@ -243,9 +246,18 @@ async function predictSeasonProb({ season, homeAbbr, awayAbbr }) {
     (off.get(H) - def.get(A)) - (off.get(A) - def.get(H)) + hfa;
 
   const pHome = 1 / (1 + Math.exp(-margin / (sigma || 7)));
+
+  // Build a richer note, e.g. "Season model: 2025 W1–W4 finals (n=64), HFA=1.9, σ=7.1"
+  const wSpan = (meta?.wMin != null && meta?.wMax != null)
+    ? ` W${meta.wMin}–W${meta.wMax}`
+    : "";
+  const nPart = meta?.nGames != null ? ` (n=${meta.nGames})` : "";
+  const hfaPart = `, HFA=${(hfa ?? 0).toFixed(1)}`;
+  const sigmaPart = `, σ=${(sigma ?? 7).toFixed(1)}`;
+
   return {
     pHome,
-    note: `Season model: ${season} finals (team O/D + HFA, σ≈${(sigma||7).toFixed(1)})`
+    note: `Season model: ${season}${wSpan} finals${nPart}${hfaPart}${sigmaPart}`
   };
 }
 
