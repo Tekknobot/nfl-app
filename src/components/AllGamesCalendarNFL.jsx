@@ -51,6 +51,65 @@ const bdlHeaders = () => {
 let TEAMS_MAP_PROMISE = null; // Promise<Map<abbrev, id>>
 const teamFormCache = new Map(); // `${teamId}:${season}` -> {ppg,oppg}
 
+/** Fetch games for a specific local date from BDL and map to your schedule shape. */
+async function fetchGamesForDateBDL(dateObj) {
+  const headers = bdlHeaders();
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2,"0");
+  const d = String(dateObj.getDate()).padStart(2,"0");
+  const dateISO = `${y}-${m}-${d}`;
+
+  const u = new URL(`${BDL_API}/games`);
+  u.searchParams.append("dates[]", dateISO);
+  u.searchParams.set("per_page", "100");
+
+  const r = await fetch(u, { headers });
+  if (!r.ok) return [];
+  const j = await r.json();
+  const list = Array.isArray(j?.data) ? j.data : [];
+
+  // Map API fields → your schedule item fields
+  return list.map(g => {
+    // kickoff: use API date if present, else build a local date
+    const kickoff = g?.date ? new Date(g.date).toISOString()
+                            : new Date(y, Number(m)-1, Number(d), 13, 0, 0).toISOString();
+
+    // team abbrs
+    const home = canonAbbr(g?.home_team?.abbreviation || g?.home || "");
+    const away = canonAbbr(g?.visitor_team?.abbreviation || g?.away || "");
+
+    // status/score (tolerant)
+    const status = g?.status || "";
+    const homeScore = Number.isFinite(Number(g?.home_team_score)) ? Number(g.home_team_score)
+                      : Number.isFinite(Number(g?.home_score))      ? Number(g.home_score)
+                      : null;
+    const awayScore = Number.isFinite(Number(g?.visitor_team_score)) ? Number(g.visitor_team_score)
+                      : Number.isFinite(Number(g?.away_score))         ? Number(g.away_score)
+                      : null;
+
+    return {
+      home, away, kickoff,
+      week: g?.week ?? g?.game?.week ?? undefined,
+      tv: g?.tv ?? undefined,
+      status,
+      homeScore, awayScore,
+
+      // optional venue/location if present
+      venue: g?.venue ?? undefined,
+      city: g?.city ?? undefined,
+      state: g?.state ?? undefined,
+    };
+  }).filter(x => x.home && x.away);
+}
+
+/** Merge a single day’s games into `data` using your YYYY-MM-DD key. */
+function mergeDayIntoData(prev, dateObj, games) {
+  const k = dateKey(dateObj);
+  const next = { ...(prev || {}) };
+  next[k] = Array.isArray(games) ? games.slice().sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff)) : [];
+  return next;
+}
+
 function gameKey(g) {
   // YYYY-MM-DD from kickoff
   const d = new Date(g.kickoff);
@@ -853,6 +912,51 @@ useEffect(() => {
 
   return () => clearTimeout(id);
 }, [week, data]);
+
+
+// Prefetch the entire visible week from the API for any missing days (works for past weeks too).
+useEffect(() => {
+  let cancelled = false;
+
+  async function hydrateWeek() {
+    if (!week?.length) return;
+
+    // Find days missing from `data` (no key or empty array)
+    const missing = week.filter(d => {
+      const arr = data?.[dateKey(d)];
+      return !Array.isArray(arr); // treat undefined as missing
+    });
+
+    if (!missing.length) return;
+
+    // Fetch in series to be gentle on rate limits; switch to Promise.all if you prefer parallel.
+    for (const day of missing) {
+      const games = await fetchGamesForDateBDL(day).catch(() => []);
+      if (cancelled) return;
+      if (games.length || !(dateKey(day) in (data || {}))) {
+        setData(prev => mergeDayIntoData(prev, day, games));
+      }
+    }
+  }
+
+  hydrateWeek();
+  return () => { cancelled = true; };
+}, [week]); // intentionally NOT depending on `data` to avoid loops
+
+// If the selected day is still missing (or empty), fetch it on demand.
+useEffect(() => {
+  let cancelled = false;
+  async function ensureSelectedDay() {
+    if (!selectedDate) return;
+    const k = dateKey(selectedDate);
+    const have = Array.isArray(data?.[k]);
+    if (have) return;
+    const games = await fetchGamesForDateBDL(selectedDate).catch(() => []);
+    if (!cancelled) setData(prev => mergeDayIntoData(prev, selectedDate, games));
+  }
+  ensureSelectedDay();
+  return () => { cancelled = true; };
+}, [selectedDate]);
 
   const selectedGames = gamesFor(selectedDate);
 
