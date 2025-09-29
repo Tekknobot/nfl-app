@@ -157,27 +157,17 @@ function impliedProbFromMoneyline(ml) {
 /** Small numeric helpers */
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-/** Get ALL completed games this season across all teams (cached) */
-const _SEASON_FINALS_CACHE = new Map(); // season -> [{home,away,home_pts,away_pts,week}]
+// ---- Finals cache (do NOT cache empty) ----
+const _SEASON_FINALS_CACHE = new Map(); // season -> finals[]
 
-function _seasonGameKey(g) {
-  if (g?.id != null) return `id:${g.id}`;
-  const d = new Date(g.date || g.kickoff || g.start_time || 0);
-  const y = d.getFullYear(), m = d.getMonth()+1, day = d.getDate();
-  const k = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-  const ha = canonAbbr(g?.home_team?.abbreviation || g.home || "");
-  const va = canonAbbr(g?.visitor_team?.abbreviation || g.away || "");
-  return `${k}|${va}@${ha}`;
-}
-
-async function getSeasonFinals(season) {
-  if (_SEASON_FINALS_CACHE.has(season)) return _SEASON_FINALS_CACHE.get(season);
+async function getSeasonFinals(season, { force = false } = {}) {
+  if (!force && _SEASON_FINALS_CACHE.has(season)) return _SEASON_FINALS_CACHE.get(season);
 
   const teams = await getTeamsMap();
   const finalsMap = new Map();
 
   const pulls = [];
-  for (const [abbr, id] of teams.entries()) {
+  for (const [, id] of teams.entries()) {
     pulls.push(
       fetchTeamGamesForSeason(id, season).then(list => {
         for (const g of list || []) {
@@ -185,13 +175,8 @@ async function getSeasonFinals(season) {
 
           const homeAbbr = canonAbbr(g?.home_team?.abbreviation || g.home || "");
           const awayAbbr = canonAbbr(g?.visitor_team?.abbreviation || g.away || "");
-          // 🔧 robust score extraction
-          const hs = Number(
-            g?.home_team_score ?? g?.home_score ?? g?.homeScore ?? NaN
-          );
-          const vs = Number(
-            g?.visitor_team_score ?? g?.away_score ?? g?.awayScore ?? NaN
-          );
+          const hs = Number(g?.home_team_score ?? g?.home_score ?? g?.homeScore ?? NaN);
+          const vs = Number(g?.visitor_team_score ?? g?.away_score ?? g?.awayScore ?? NaN);
           if (!homeAbbr || !awayAbbr || !Number.isFinite(hs) || !Number.isFinite(vs)) continue;
 
           finalsMap.set(_seasonGameKey(g), {
@@ -208,41 +193,34 @@ async function getSeasonFinals(season) {
   await Promise.all(pulls);
 
   const finals = Array.from(finalsMap.values());
-  _SEASON_FINALS_CACHE.set(season, finals);
+  // ⬇️ Only cache if we actually have data
+  if (finals.length > 0) _SEASON_FINALS_CACHE.set(season, finals);
   return finals;
 }
 
-/** Fit offensive/defensive ratings + data-driven HFA using season finals */
+// ---- Ratings cache (do NOT cache empty) + force refresh ----
 const _SEASON_RATINGS_CACHE = new Map(); // season -> { off, def, hfa, sigma, meta }
 
-async function getSeasonRatings(season) {
-  if (_SEASON_RATINGS_CACHE.has(season)) return _SEASON_RATINGS_CACHE.get(season);
+async function getSeasonRatings(season, { force = false } = {}) {
+  if (!force && _SEASON_RATINGS_CACHE.has(season)) return _SEASON_RATINGS_CACHE.get(season);
 
-  const games = await getSeasonFinals(season);
+  const games = await getSeasonFinals(season, { force });
   if (!games.length) {
-    const empty = { off:new Map(), def:new Map(), hfa:2.0, sigma:7.0, meta:{ nGames:0, wMin:null, wMax:null } };
-    _SEASON_RATINGS_CACHE.set(season, empty);
-    return empty;
+    // return a neutral object but DO NOT cache it; next call can re-try
+    return { off:new Map(), def:new Map(), hfa:2.0, sigma:7.0, meta:{ nGames:0, wMin:null, wMax:null } };
   }
 
-  // week metadata
   const weeks = games.map(g => g.week).filter(w => Number.isFinite(w));
   const wMin = weeks.length ? Math.min(...weeks) : null;
   const wMax = weeks.length ? Math.max(...weeks) : null;
 
-  const teamSet = new Set();
-  games.forEach(g => { teamSet.add(g.home); teamSet.add(g.away); });
-
+  const teamSet = new Set(games.flatMap(g => [g.home, g.away]));
   const off = new Map(), def = new Map();
   for (const t of teamSet) { off.set(t, 0); def.set(t, 0); }
 
-  // Initial HFA from data
   let hfa = games.reduce((s,g)=> s + (g.home_pts - g.away_pts), 0) / games.length;
-
-  // Recency weights by week
   const weekWeight = (w) => (Number.isFinite(w) && wMax != null) ? Math.pow(0.85, (wMax - w)) : 1;
 
-  // SGD on points
   const LR = 0.015, EPOCHS = 10;
   for (let epoch=0; epoch<EPOCHS; epoch++) {
     for (const g of games) {
@@ -253,76 +231,84 @@ async function getSeasonRatings(season) {
       const predH = oh - da + hfa;
       const predA = oa - dh;
 
-      const errH = (g.home_pts - predH);
-      const errA = (g.away_pts - predA);
+      const errH = g.home_pts - predH;
+      const errA = g.away_pts - predA;
 
       off.set(g.home, oh + LR * w * errH);
       def.set(g.away, da - LR * w * errH);
-
       off.set(g.away, oa + LR * w * errA);
       def.set(g.home, dh - LR * w * errA);
     }
-
-    // Center ratings
+    // center
     const meanOff = Array.from(off.values()).reduce((a,b)=>a+b,0)/off.size;
     const meanDef = Array.from(def.values()).reduce((a,b)=>a+b,0)/def.size;
     for (const t of off.keys()) off.set(t, off.get(t) - meanOff);
     for (const t of def.keys()) def.set(t, def.get(t) - meanDef);
 
-    // Adjust HFA slightly from margin errors
-    let hErrSum=0, wSum=0;
+    // tweak HFA from margin errors
+    let hErr=0, wSum=0;
     for (const g of games) {
       const w = weekWeight(g.week);
-      const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
-      const errM = (g.home_pts - g.away_pts) - predMargin;
-      hErrSum += w * errM; wSum += w;
+      const predM = (off.get(g.home)-def.get(g.away)) - (off.get(g.away)-def.get(g.home)) + hfa;
+      hErr += w * ((g.home_pts - g.away_pts) - predM);
+      wSum += w;
     }
-    if (wSum > 0) hfa += (LR * 0.25) * (hErrSum / wSum);
+    if (wSum>0) hfa += (LR*0.25) * (hErr / wSum);
   }
 
-  // Sigma from margin RMSE
-  let sse = 0;
+  // sigma from RMSE
+  let sse=0;
   for (const g of games) {
-    const predMargin = (off.get(g.home) - def.get(g.away)) - (off.get(g.away) - def.get(g.home)) + hfa;
-    const err = (g.home_pts - g.away_pts) - predMargin;
+    const predM = (off.get(g.home)-def.get(g.away)) - (off.get(g.away)-def.get(g.home)) + hfa;
+    const err = (g.home_pts - g.away_pts) - predM;
     sse += err*err;
   }
   const n = games.length;
   const rmse = n ? Math.sqrt(sse/n) : 7.0;
   const sigma = Math.max(5.0, Math.min(12.0, rmse));
 
-  const out = { off, def, hfa, sigma, meta: { nGames: n, wMin, wMax } };
+  const out = { off, def, hfa, sigma, meta:{ nGames:n, wMin, wMax } };
+  // ⬇️ Cache only if we have non-empty data
   _SEASON_RATINGS_CACHE.set(season, out);
   return out;
 }
 
+
+function _seasonGameKey(g) {
+  if (g?.id != null) return `id:${g.id}`;
+  const d = new Date(g.date || g.kickoff || g.start_time || 0);
+  const y = d.getFullYear(), m = d.getMonth()+1, day = d.getDate();
+  const k = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  const ha = canonAbbr(g?.home_team?.abbreviation || g.home || "");
+  const va = canonAbbr(g?.visitor_team?.abbreviation || g.away || "");
+  return `${k}|${va}@${ha}`;
+}
+
 /** Predict probability using season ratings (ALL finals this season) */
 async function predictSeasonProb({ season, homeAbbr, awayAbbr }) {
-  const { off, def, hfa, sigma, meta } = await getSeasonRatings(season);
+  // first try (uses cache)
+  let res = await getSeasonRatings(season);
+  if ((res?.meta?.nGames ?? 0) === 0) {
+    // re-try with force refresh (don’t use stale empty cache)
+    res = await getSeasonRatings(season, { force: true });
+  }
+
+  const { off, def, hfa, sigma, meta } = res;
   const H = canonAbbr(homeAbbr);
   const A = canonAbbr(awayAbbr);
-
   ensureTeamRating(off, def, H);
   ensureTeamRating(off, def, A);
 
-  const margin =
-    (off.get(H) - def.get(A)) - (off.get(A) - def.get(H)) + hfa;
-
+  const margin = (off.get(H)-def.get(A)) - (off.get(A)-def.get(H)) + hfa;
   const pHome = 1 / (1 + Math.exp(-margin / (sigma || 7)));
 
-  // Build a richer note, e.g. "Season model: 2025 W1–W4 finals (n=64), HFA=1.9, σ=7.1"
-  const wSpan = (meta?.wMin != null && meta?.wMax != null)
-    ? ` W${meta.wMin}–W${meta.wMax}`
-    : "";
+  const wSpan = (meta?.wMin != null && meta?.wMax != null) ? ` W${meta.wMin}–W${meta.wMax}` : "";
   const nPart = meta?.nGames != null ? ` (n=${meta.nGames})` : "";
   const hfaPart = `, HFA=${(hfa ?? 0).toFixed(1)}`;
   const sigmaPart = `, σ=${(sigma ?? 7).toFixed(1)}`;
-
-  return {
-    pHome,
-    note: `Season model: ${season}${wSpan} finals${nPart}${hfaPart}${sigmaPart}`
-  };
+  return { pHome, note: `Season model: ${season}${wSpan} finals${nPart}${hfaPart}${sigmaPart}` };
 }
+
 
 /** Pro odds fetcher (call with canonAbbr values) */
 async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
@@ -340,6 +326,7 @@ async function fetchGameMoneylinesBDLPro({ dateISO, homeAbbr, awayAbbr }) {
     if (!u.searchParams.has("per_page")) u.searchParams.set("per_page", "100");
     return u.toString();
   };
+
   const same = (a,b) => canonAbbr(a) === canonAbbr(b);
 
   const readPairFromUnknown = (container) => {
@@ -838,7 +825,6 @@ function GameRow({ g, onClick }) {
   );
 }
 
-
 /* ---------- Main Component ---------- */
 export default function AllGamesCalendarNFL(){
   const [data, setData] = useState(null);      // { "YYYY-MM-DD": Game[] }
@@ -883,6 +869,12 @@ export default function AllGamesCalendarNFL(){
     return () => { cancelled = true; };
   }, []);
 
+  // 🔄 Clear any stale season caches on mount (do this before probs are computed)
+  useEffect(() => {
+    _SEASON_FINALS_CACHE.clear?.();
+    _SEASON_RATINGS_CACHE.clear?.();
+  }, []);
+
   // Week days
   const week = useMemo(()=>{
     const start = startOfWeek(cursor);
@@ -910,64 +902,63 @@ export default function AllGamesCalendarNFL(){
       .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
   };
 
-// Auto-select first day with games when week changes
-useEffect(() => {
-  const first = week.find(d => gamesFor(d).length > 0) || week[0];
-  setSelectedDate(first);
+  // Auto-select first day with games when week changes
+  useEffect(() => {
+    const first = week.find(d => gamesFor(d).length > 0) || week[0];
+    setSelectedDate(first);
 
-  const key = dateKey(first);
-  const id = setTimeout(() => {
-    const el = stripRef.current?.querySelector?.(`[data-day="${key}"]`);
-    if (el) el.scrollIntoView({ inline: "center", behavior: "smooth", block: "nearest" });
-  }, 50);
+    const key = dateKey(first);
+    const id = setTimeout(() => {
+      const el = stripRef.current?.querySelector?.(`[data-day="${key}"]`);
+      if (el) el.scrollIntoView({ inline: "center", behavior: "smooth", block: "nearest" });
+    }, 50);
 
-  return () => clearTimeout(id);
-}, [week, data]);
+    return () => clearTimeout(id);
+  }, [week, data]);
 
+  // Prefetch the entire visible week from the API for any missing days (works for past weeks too).
+  useEffect(() => {
+    let cancelled = false;
 
-// Prefetch the entire visible week from the API for any missing days (works for past weeks too).
-useEffect(() => {
-  let cancelled = false;
+    async function hydrateWeek() {
+      if (!week?.length) return;
 
-  async function hydrateWeek() {
-    if (!week?.length) return;
+      // Find days missing from `data` (no key or empty array)
+      const missing = week.filter(d => {
+        const arr = data?.[dateKey(d)];
+        return !Array.isArray(arr); // treat undefined as missing
+      });
 
-    // Find days missing from `data` (no key or empty array)
-    const missing = week.filter(d => {
-      const arr = data?.[dateKey(d)];
-      return !Array.isArray(arr); // treat undefined as missing
-    });
+      if (!missing.length) return;
 
-    if (!missing.length) return;
-
-    // Fetch in series to be gentle on rate limits; switch to Promise.all if you prefer parallel.
-    for (const day of missing) {
-      const games = await fetchGamesForDateBDL(day).catch(() => []);
-      if (cancelled) return;
-      if (games.length || !(dateKey(day) in (data || {}))) {
-        setData(prev => mergeDayIntoData(prev, day, games));
+      // Fetch in series to be gentle on rate limits; switch to Promise.all if you prefer parallel.
+      for (const day of missing) {
+        const games = await fetchGamesForDateBDL(day).catch(() => []);
+        if (cancelled) return;
+        if (games.length || !(dateKey(day) in (data || {}))) {
+          setData(prev => mergeDayIntoData(prev, day, games));
+        }
       }
     }
-  }
 
-  hydrateWeek();
-  return () => { cancelled = true; };
-}, [week]); // intentionally NOT depending on `data` to avoid loops
+    hydrateWeek();
+    return () => { cancelled = true; };
+  }, [week]); // intentionally NOT depending on `data` to avoid loops
 
-// If the selected day is still missing (or empty), fetch it on demand.
-useEffect(() => {
-  let cancelled = false;
-  async function ensureSelectedDay() {
-    if (!selectedDate) return;
-    const k = dateKey(selectedDate);
-    const have = Array.isArray(data?.[k]);
-    if (have) return;
-    const games = await fetchGamesForDateBDL(selectedDate).catch(() => []);
-    if (!cancelled) setData(prev => mergeDayIntoData(prev, selectedDate, games));
-  }
-  ensureSelectedDay();
-  return () => { cancelled = true; };
-}, [selectedDate]);
+  // If the selected day is still missing (or empty), fetch it on demand.
+  useEffect(() => {
+    let cancelled = false;
+    async function ensureSelectedDay() {
+      if (!selectedDate) return;
+      const k = dateKey(selectedDate);
+      const have = Array.isArray(data?.[k]);
+      if (have) return;
+      const games = await fetchGamesForDateBDL(selectedDate).catch(() => []);
+      if (!cancelled) setData(prev => mergeDayIntoData(prev, selectedDate, games));
+    }
+    ensureSelectedDay();
+    return () => { cancelled = true; };
+  }, [selectedDate]);
 
   const selectedGames = gamesFor(selectedDate);
 
@@ -995,7 +986,6 @@ useEffect(() => {
       return out;
     });
   }, [selectedGames, liveByKey]);
-
 
   // Compute win probability when a game is opened (BDL Pro moneylines → fallback form model)
   useEffect(() => {
