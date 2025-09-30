@@ -941,8 +941,6 @@ export default function AllGamesCalendarNFL(){
     const hasGamesToday = inThisWeek && gamesFor(today).length > 0;
     const firstWithGames = week.find(d => gamesFor(d).length > 0);
 
-    if (!hasGamesToday && firstWithGames) target = firstWithGames;
-
     setSelectedDate(target);
 
     const key = dateKey(target);
