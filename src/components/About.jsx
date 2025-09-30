@@ -8,10 +8,10 @@ export default function About() {
         <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
           <CardContent>
             <Typography variant="h4" sx={{ mb: 1, letterSpacing: 1 }}>
-              SNAPPCOUNT
+              SnappCount
             </Typography>
             <Typography sx={{ opacity: .9 }}>
-              SNAPPCOUNT is a lightweight NFL schedule & matchup viewer. Browse games by week, tap a matchup,
+              SnappCount is a lightweight NFL schedule & matchup viewer. Browse games by week, tap a matchup,
               and see a quick, transparent estimate of the home team’s win probability based on recent results.
             </Typography>
           </CardContent>
@@ -39,7 +39,7 @@ export default function About() {
             <Divider sx={{ mb: 2 }} />
 
             <Typography sx={{ mb: 1 }}>
-              SNAPPCOUNT estimates the home team’s win chance using a blend of market odds and a season model:
+              SnappCount estimates the home team’s win chance using a blend of market odds and a season model:
             </Typography>
 
             <Typography component="div" sx={{ pl: 2, mb: 1 }}>
