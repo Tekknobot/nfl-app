@@ -1054,7 +1054,8 @@ export default function AllGamesCalendarNFL(){
               home: res.home,    // you can round here if desired
               away: res.away,
               asOf: new Date().toISOString(),
-              frozenAt: new Date(Math.max(now(), freezeAt)).toISOString()
+              // Always show the intended freeze moment: kickoff - 1h
+              frozenAt: new Date(freezeAt).toISOString()
             }
           }));
         }
