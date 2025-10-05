@@ -859,7 +859,7 @@ export default function AllGamesCalendarNFL(){
   const [selected, setSelected] = useState(null); // { g, d }
   const [liveByKey, setLiveByKey] = useState({});
   const [pregameProbByKey, setPregameProbByKey] = useState({}); // gameKey -> { home, away, asOf }
-  
+
   // probability state
   const [prob, setProb] = useState(null);       // { home, away } or null
   const [probLoading, setProbLoading] = useState(false);
@@ -1026,38 +1026,28 @@ export default function AllGamesCalendarNFL(){
     });
   }, [selectedGames, liveByKey]);
 
-  // Compute win probability when a game is opened (BDL Pro moneylines → fallback form model)
+  // Freeze pregame probability (computed once per game)
   useEffect(() => {
     let cancelled = false;
-
-    async function computeProb() {
-      setProb(null);
-      setProbNote("");
+    async function ensurePregame() {
       if (!selected?.g) return;
-
-      setProbLoading(true);
+      const k = gameKey(selected.g);
+      if (pregameProbByKey[k]) return; // already frozen
       try {
-        const res = await getWinProbabilityForGame(selected.g); // uses Pro first, then fallback
-        if (!cancelled) {
-          if (res) {
-            setProb({ home: res.home, away: res.away });
-            setProbNote(res.note || "Based on market lines.");
-          } else {
-            setProb(null);
-            setProbNote("Probability unavailable.");
-          }
+        const res = await getWinProbabilityForGame(selected.g);
+        if (!cancelled && res) {
+          setPregameProbByKey(prev => ({
+            ...prev,
+            [k]: {
+              home: res.home,           // optional: round here
+              away: res.away,
+              asOf: new Date().toISOString()
+            }
+          }));
         }
-      } catch (e) {
-        if (!cancelled) {
-          setProb(null);
-          setProbNote("Could not compute probability (data unavailable or rate-limited).");
-        }
-      } finally {
-        if (!cancelled) setProbLoading(false);
-      }
+      } catch {}
     }
-
-    computeProb();
+    ensurePregame();
     return () => { cancelled = true; };
   }, [selected, pregameProbByKey]);
 
