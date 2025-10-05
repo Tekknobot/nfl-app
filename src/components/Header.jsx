@@ -1,6 +1,7 @@
 import React from "react";
 import { AppBar, Toolbar, Typography, Box } from "@mui/material";
 import { Link as RouterLink, NavLink as RouterNavLink } from "react-router-dom";
+import SportsFootballIcon from "@mui/icons-material/SportsFootball";
 
 const NavItem = ({ to, children }) => {
   return (
@@ -39,7 +40,7 @@ export default function Header() {
       sx={{ backdropFilter: "blur(6px)", borderBottom: 1, borderColor: "rgba(255,255,255,.1)" }}
     >
       <Toolbar sx={{ display: "flex", gap: 2, minHeight: { xs: 56, sm: 64 } }}>
-        {/* Brand (clickable) */}
+        {/* Brand (clickable) – football icon only */}
         <Box
           component={RouterLink}
           to="/"
@@ -53,25 +54,13 @@ export default function Header() {
             mr: 1
           }}
         >
-          <Typography
-            variant="h5"
-            sx={{
-              fontFamily: '"Bebas Neue","Oswald",sans-serif',
-              fontWeight: 700,
-              letterSpacing: 0.5,
-              lineHeight: 1,
-              flex: 1,
-              mr: 1
-            }}
-          >
-            
-          </Typography>
+          <SportsFootballIcon />
         </Box>
 
         {/* Spacer to push nav right on small screens */}
         <Box sx={{ flex: 1, display: { xs: "none", md: "block" } }} />
 
-        {/* Nav */}
+        {/* Nav (text-only) */}
         <NavItem to="/weeks">Weeks</NavItem>
         <NavItem to="/about">About</NavItem>
         <NavItem to="/contact">Contact</NavItem>
