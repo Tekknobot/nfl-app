@@ -138,7 +138,6 @@ export default function About() {
         </CardContent>
       </Card>
 
-
       </Stack>
     </Box>
   );
