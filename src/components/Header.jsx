@@ -1,12 +1,8 @@
 import React from "react";
 import { AppBar, Toolbar, Typography, Box } from "@mui/material";
-import SportsFootballIcon from "@mui/icons-material/SportsFootball";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import { Link as RouterLink, NavLink as RouterNavLink } from "react-router-dom";
 
-const NavItem = ({ to, icon: Icon, children }) => {
+const NavItem = ({ to, children }) => {
   return (
     <RouterNavLink
       to={to}
@@ -27,7 +23,6 @@ const NavItem = ({ to, icon: Icon, children }) => {
             borderRadius: 1
           }}
         >
-          <Icon fontSize="small" />
           <Typography variant="subtitle1">{children}</Typography>
         </Box>
       )}
@@ -58,7 +53,6 @@ export default function Header() {
             mr: 1
           }}
         >
-          <SportsFootballIcon />
           <Typography
             variant="h5"
             sx={{
@@ -78,9 +72,9 @@ export default function Header() {
         <Box sx={{ flex: 1, display: { xs: "none", md: "block" } }} />
 
         {/* Nav */}
-        <NavItem to="/weeks" icon={CalendarMonthIcon}>Weeks</NavItem>
-        <NavItem to="/about" icon={InfoOutlinedIcon}>About</NavItem>
-        <NavItem to="/contact" icon={MailOutlineIcon}>Contact</NavItem>
+        <NavItem to="/weeks">Weeks</NavItem>
+        <NavItem to="/about">About</NavItem>
+        <NavItem to="/contact">Contact</NavItem>
       </Toolbar>
     </AppBar>
   );
