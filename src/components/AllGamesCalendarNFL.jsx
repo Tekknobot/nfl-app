@@ -10,6 +10,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
 import TodayIcon from "@mui/icons-material/Today";
 import { useTheme } from "@mui/material/styles";
+import InfoPanelNFL from "./InfoPanelNFL";
 
 /* ---------- UI helpers ---------- */
 const TEAM_COLORS = {
@@ -1139,6 +1140,8 @@ export default function AllGamesCalendarNFL(){
 
   return (
     <Box sx={{ maxWidth: 720, mx:'auto', px:{ xs:1, sm:2 } }}>
+      <InfoPanelNFL />
+      
       {/* Sticky header with week nav */}
       <Stack
         direction="row"
