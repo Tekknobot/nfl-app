@@ -703,6 +703,33 @@ function scoreNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// --- Model/pick helpers (pregame, frozen) ---
+
+/** Turn a probability into a pick + confidence text */
+function pickFromProb(prob, homeTeam, awayTeam) {
+  if (!prob || typeof prob.home !== "number" || typeof prob.away !== "number") {
+    return null;
+  }
+  const side = prob.home >= prob.away ? "home" : "away";
+  const team = side === "home" ? homeTeam : awayTeam;
+  const confidence = Math.max(prob.home, prob.away); // 0..1
+  return {
+    side,                // "home" | "away"
+    team,                // team string
+    confidence,          // 0..1
+    confidencePct: `${(confidence * 100).toFixed(1)}%`
+  };
+}
+
+/** Prefer the frozen pregame probability; fallback to live prob (if you still compute it) */
+function getPreferredProb(selected, pregameProbByKey, liveProb /* your existing `prob` */) {
+  if (!selected?.g) return null;
+  const k = gameKey(selected.g);
+  const frozen = pregameProbByKey[k];
+  if (frozen) return { home: frozen.home, away: frozen.away, frozen }; // includes timestamp metadata
+  return liveProb || null;
+}
+
 // Try many shapes: camel/snake, nested, totals, and combined strings like "27–24"
 function extractScores(g) {
   const tryPairs = [
@@ -1274,40 +1301,73 @@ export default function AllGamesCalendarNFL(){
                 </Stack>
               )}
 
-              {/* Verdict: was the model correct (finals only)? */}
+              {/* Model pick (always) + verdict (finals only) */}
               {(() => {
-                const v = verdictForGame(selected.g, prob);
-                if (!v || v.tie) return null;
+                // 1) Get probability (prefer frozen 1h pre-kick)
+                const pref = getPreferredProb(selected, pregameProbByKey, prob);
+                const p = pref ? { home: pref.home, away: pref.away } : null;
 
-                const picked =
-                  v.predicted === "home" ? selected.g.home :
-                  v.predicted === "away" ? selected.g.away : null;
+                // 2) Always show the pregame/frozen pick if we have a probability
+                const pick = p ? pickFromProb(p, selected.g.home, selected.g.away) : null;
 
-                const actual =
-                  v.actual === "home" ? selected.g.home :
-                  v.actual === "away" ? selected.g.away : null;
-
-                const confPct = v.confidence != null ? ` ${(v.confidence * 100).toFixed(1)}%` : "";
+                // 3) If the game is final, compute verdict using the same probability
+                const finalVerdict = verdictForGame(selected.g, p); // returns null until final / tie
+                const isFinalVerdict = finalVerdict && finalVerdict.final && !finalVerdict.tie;
 
                 return (
-                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                    <Chip
-                      size="small"
-                      color={v.correct === true ? "success" : (v.correct === false ? "error" : "default")}
-                      label={
-                        v.correct === true
-                          ? "Model: Correct"
-                          : v.correct === false
-                            ? "Model: Upset"
-                            : "Model: Unknown"
-                      }
-                    />
-                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                      {picked
-                        ? `Picked ${picked}${confPct} · Actual ${actual}`
-                        : `No pick available`}
-                    </Typography>
-                  </Stack>
+                  <>
+                    {/* Pregame/frozen model pick (always if p) */}
+                    {pick ? (
+                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                        <Chip size="small" color="primary" label="Model pick (pregame, frozen)" />
+                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                          {pick.team} {pick.confidencePct}
+                        </Typography>
+                      </Stack>
+                    ) : (
+                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                        <Chip size="small" label="Model pick" />
+                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                          No pick available
+                        </Typography>
+                      </Stack>
+                    )}
+
+                    {/* Final verdict (only after the game ends) */}
+                    {isFinalVerdict && (
+                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                        <Chip
+                          size="small"
+                          color={
+                            finalVerdict.correct === true
+                              ? "success"
+                              : finalVerdict.correct === false
+                              ? "error"
+                              : "default"
+                          }
+                          label={
+                            finalVerdict.correct === true
+                              ? "Model: Correct"
+                              : finalVerdict.correct === false
+                              ? "Model: Upset"
+                              : "Model: Unknown"
+                          }
+                        />
+                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                          {finalVerdict.predicted === "home"
+                            ? selected.g.home
+                            : finalVerdict.predicted === "away"
+                            ? selected.g.away
+                            : "—"}
+                          {finalVerdict.confidence != null
+                            ? ` ${(finalVerdict.confidence * 100).toFixed(1)}%`
+                            : ""}
+                          {" · Actual "}
+                          {finalVerdict.actual === "home" ? selected.g.home : selected.g.away}
+                        </Typography>
+                      </Stack>
+                    )}
+                  </>
                 );
               })()}
 
@@ -1318,44 +1378,47 @@ export default function AllGamesCalendarNFL(){
                 </Typography>
 
                 {(() => {
-                  const k = selected ? gameKey(selected.g) : null;
-                  const frozen = k ? pregameProbByKey[k] : null;
+                  const pref = getPreferredProb(selected, pregameProbByKey, prob);
                   const freezeAt = selected ? freezeAtFor(selected.g) : null;
-                  const frozenReady = Boolean(frozen);
-                  const beforeFreeze = freezeAt ? now() < freezeAt.getTime() : false;
+                  const frozenReady = pref && pref.frozen;  // has pregameProb metadata
+                  const beforeFreeze = freezeAt ? Date.now() < freezeAt.getTime() : false;
 
                   if (!frozenReady && !beforeFreeze) {
-                    // We’re past freeze time but haven’t computed yet (first open): brief spinner
+                    // Past freeze time but not computed yet (first open) -> brief spinner
                     return <LinearProgress sx={{ height:6, borderRadius:1 }} />;
                   }
 
                   if (!frozenReady && beforeFreeze) {
-                    // Not yet frozen; informative pre-freeze message
+                    // Not frozen yet—inform the user when it will freeze
                     return (
                       <Typography variant="body2" sx={{ opacity:.85 }}>
-                        Pregame estimate will freeze 1 hour before kickoff ({freezeAt.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}).
-                        Open the game again after that time to see the frozen value.
+                        Pregame estimate will freeze 1 hour before kickoff (
+                        {freezeAt.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}).
+                        Open again after that time to see the frozen value.
                       </Typography>
                     );
                   }
 
-                  // Frozen and ready
+                  // Frozen & ready
+                  const pct = Math.max(0, Math.min(100, pref.home * 100));
                   return (
                     <>
                       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb:0.5 }}>
                         <Typography variant="body2">{selected.g.home}</Typography>
                         <Typography variant="body2" sx={{ fontWeight:600 }}>
-                          {(frozen.home * 100).toFixed(0)}%
+                          {pct.toFixed(0)}%
                         </Typography>
                       </Stack>
                       <LinearProgress
                         variant="determinate"
-                        value={Math.max(0, Math.min(100, frozen.home * 100))}
+                        value={pct}
                         sx={{ height:10, borderRadius:1 }}
                       />
                       <Typography variant="caption" sx={{ display:"block", mt:0.5, opacity:.8 }}>
                         Frozen 1h pre-kickoff
-                        {frozen.frozenAt ? ` · at ${new Date(frozen.frozenAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}` : ""}
+                        {pref.frozen?.frozenAt
+                          ? ` · at ${new Date(pref.frozen.frozenAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`
+                          : ""}
                       </Typography>
                     </>
                   );
