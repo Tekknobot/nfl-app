@@ -4,6 +4,7 @@ import SportsFootballIcon from "@mui/icons-material/SportsFootball";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { Link, useLocation } from "react-router-dom";
+import MailOutlineIcon from "@mui/icons-material/MailOutline";
 
 const NavLink = ({ to, icon: Icon, children }) => {
   const { pathname } = useLocation();
@@ -80,6 +81,9 @@ export default function Header() {
         </NavLink>
         <NavLink to="/about" icon={InfoOutlinedIcon}>
           About
+        </NavLink>
+        <NavLink to="/contact" icon={MailOutlineIcon}>
+          Contact
         </NavLink>
       </Toolbar>
     </AppBar>
