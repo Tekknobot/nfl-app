@@ -1214,22 +1214,8 @@ export default function AllGamesCalendarNFL(){
                 <GameRow key={i} g={g} onClick={()=> setSelected({ g, d: selectedDate })} />
               ))}
             </Stack>
-            ) : (
-                <Stack spacing={1.25}>
-                <Typography variant="body1" sx={{ opacity:0.9, fontWeight:600 }}>
-                  No NFL games today — here’s something to check out:
-                </Typography>
-                {/* Always-on publisher content (text) */}
-                <Typography variant="body2" sx={{ opacity:0.9 }}>
-                  The regular season ebbs and flows. On off days, teams reset, rehab, and prep the game plan.
-                  Curious how we estimate matchups? We blend recent form with a simple season model for quick,
-                  fan-friendly probabilities — it’s light, transparent, and meant for browsing.
-                </Typography>
-                {/* Show an extra Snap Fact for more text density */}
-                <SnapFactPanel />
-                {/* Optional: tease what's next */}
-                <UpcomingTeaser data={data} fromDate={selectedDate} horizonDays={5} />
-            </Stack>
+          ) : (
+            <Typography variant="body2" sx={{ opacity:0.7 }}>No games today.</Typography>
           )}
         </CardContent>
       </Card>
