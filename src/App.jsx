@@ -4,6 +4,7 @@ import { Box, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import Header from "./components/Header";
 import AllGamesCalendarNFL from "./components/AllGamesCalendarNFL";
 import About from "./components/About";
+import Contact from "./components/Contact";
 
 const theme = createTheme({
   palette: {
@@ -30,6 +31,7 @@ export default function App(){
             <Route path="/" element={<Navigate to="/weeks" replace />} />
             <Route path="/weeks" element={<AllGamesCalendarNFL />} />
             <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
             <Route path="*" element={<Navigate to="/weeks" replace />} />
           </Routes>
         </Box>

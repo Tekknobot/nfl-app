@@ -3,32 +3,35 @@ import { AppBar, Toolbar, Typography, Box } from "@mui/material";
 import SportsFootballIcon from "@mui/icons-material/SportsFootball";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { Link, useLocation } from "react-router-dom";
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
+import { Link as RouterLink, NavLink as RouterNavLink } from "react-router-dom";
 
-const NavLink = ({ to, icon: Icon, children }) => {
-  const { pathname } = useLocation();
-  const active = pathname === to;
+const NavItem = ({ to, icon: Icon, children }) => {
   return (
-    <Box
-      component={Link}
+    <RouterNavLink
       to={to}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1,
-        px: 1.5,
-        py: 0.75,
-        textDecoration: "none",
-        color: active ? "secondary.main" : "#fff",
-        borderBottom: active ? 2 : 0,
-        borderColor: "secondary.main",
-        borderRadius: 1
-      }}
+      style={{ textDecoration: "none" }}
+      className={({ isActive }) => (isActive ? "active" : undefined)}
     >
-      <Icon fontSize="small" />
-      <Typography variant="subtitle1">{children}</Typography>
-    </Box>
+      {({ isActive }) => (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.5,
+            py: 0.75,
+            color: isActive ? "secondary.main" : "#fff",
+            borderBottom: isActive ? 2 : 0,
+            borderColor: "secondary.main",
+            borderRadius: 1
+          }}
+        >
+          <Icon fontSize="small" />
+          <Typography variant="subtitle1">{children}</Typography>
+        </Box>
+      )}
+    </RouterNavLink>
   );
 };
 
@@ -43,7 +46,7 @@ export default function Header() {
       <Toolbar sx={{ display: "flex", gap: 2, minHeight: { xs: 56, sm: 64 } }}>
         {/* Brand (clickable) */}
         <Box
-          component={Link}
+          component={RouterLink}
           to="/"
           aria-label="SNP.COUNT home"
           sx={{
@@ -63,7 +66,6 @@ export default function Header() {
               fontWeight: 700,
               letterSpacing: 0.5,
               lineHeight: 1,
-              // allow the wordmark to flex but not push nav off-screen
               flex: 1,
               mr: 1
             }}
@@ -76,15 +78,9 @@ export default function Header() {
         <Box sx={{ flex: 1, display: { xs: "none", md: "block" } }} />
 
         {/* Nav */}
-        <NavLink to="/weeks" icon={CalendarMonthIcon}>
-          Weeks
-        </NavLink>
-        <NavLink to="/about" icon={InfoOutlinedIcon}>
-          About
-        </NavLink>
-        <NavLink to="/contact" icon={MailOutlineIcon}>
-          Contact
-        </NavLink>
+        <NavItem to="/weeks" icon={CalendarMonthIcon}>Weeks</NavItem>
+        <NavItem to="/about" icon={InfoOutlinedIcon}>About</NavItem>
+        <NavItem to="/contact" icon={MailOutlineIcon}>Contact</NavItem>
       </Toolbar>
     </AppBar>
   );
