@@ -112,8 +112,6 @@ function mergeDayIntoData(prev, dateObj, games) {
   return next;
 }
 
-const [pregameProbByKey, setPregameProbByKey] = useState({}); // gameKey -> {home, away, asOf}
-
 function gameKey(g) {
   // YYYY-MM-DD from kickoff
   const d = new Date(g.kickoff);
@@ -860,6 +858,7 @@ export default function AllGamesCalendarNFL(){
   const [selectedDate, setSelectedDate] = useState(()=> new Date());
   const [selected, setSelected] = useState(null); // { g, d }
   const [liveByKey, setLiveByKey] = useState({});
+  const [pregameProbByKey, setPregameProbByKey] = useState({}); // gameKey -> { home, away, asOf }
   
   // probability state
   const [prob, setProb] = useState(null);       // { home, away } or null
