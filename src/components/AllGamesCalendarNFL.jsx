@@ -112,6 +112,8 @@ function mergeDayIntoData(prev, dateObj, games) {
   return next;
 }
 
+const [pregameProbByKey, setPregameProbByKey] = useState({}); // gameKey -> {home, away, asOf}
+
 function gameKey(g) {
   // YYYY-MM-DD from kickoff
   const d = new Date(g.kickoff);
@@ -1058,7 +1060,7 @@ export default function AllGamesCalendarNFL(){
 
     computeProb();
     return () => { cancelled = true; };
-  }, [selected]);
+  }, [selected, pregameProbByKey]);
 
   // Live status / final score updater for the open game
   useEffect(() => {
@@ -1297,26 +1299,29 @@ export default function AllGamesCalendarNFL(){
                   Win probability (simple model)
                 </Typography>
 
-                {probLoading && <LinearProgress sx={{ height:6, borderRadius:1 }} />}
-
-                {!probLoading && prob && (
+                   {(() => {
+                     const k = selected ? gameKey(selected.g) : null;
+                     const frozen = k ? pregameProbByKey[k] : null;
+                     if (!frozen) return <LinearProgress sx={{ height:6, borderRadius:1 }} />; // computing once
+                     return (
                   <>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb:0.5 }}>
                       <Typography variant="body2">{selected.g.home}</Typography>
                       <Typography variant="body2" sx={{ fontWeight:600 }}>
-                        {(prob.home * 100).toFixed(1)}%
+                        {(frozen.home * 100).toFixed(0)}%
                       </Typography>
                     </Stack>
                     <LinearProgress
                       variant="determinate"
-                      value={Math.max(0, Math.min(100, prob.home * 100))}
+                      value={Math.max(0, Math.min(100, frozen.home * 100))}
                       sx={{ height:10, borderRadius:1 }}
                     />
                     <Typography variant="caption" sx={{ display:"block", mt:0.5, opacity:.8 }}>
-                      {probNote}
+                      Pregame win probability (frozen){frozen.asOf ? ` · as of ${new Date(frozen.asOf).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}` : ""}
                     </Typography>
                   </>
-                )}
+                 );
+               })()}
 
                 {!probLoading && prob === null && (
                   <Typography variant="body2" sx={{ opacity:.8 }}>
