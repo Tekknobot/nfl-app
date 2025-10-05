@@ -21,9 +21,9 @@ export default function InfoPanelNFL() {
               NFL Calendar & Matchup Helper
             </Typography>
             <Typography variant="body1" sx={{ opacity: 0.95 }}>
-              Browse the NFL schedule week by week. Tap any game to see both teams’ recent form,
-              a light win-probability estimate (“Model edge”), and quick matchup notes.
-              Built to be clean, mobile-friendly, and fun to explore.
+            Explore the NFL schedule week by week. Each matchup shows recent team form, a light model-based
+            win edge, and short notes to highlight context — designed to make tracking the season quick,
+            simple, and fun on any device.
             </Typography>
             <Divider sx={{ my: 1.25, opacity: 0.15 }} />
             <Typography variant="caption" sx={{ opacity: 0.8 }}>
