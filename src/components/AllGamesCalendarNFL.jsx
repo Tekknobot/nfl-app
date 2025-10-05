@@ -886,8 +886,9 @@ export default function AllGamesCalendarNFL(){
   const [selected, setSelected] = useState(null); // { g, d }
   const [liveByKey, setLiveByKey] = useState({});
 
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  const freezeAtFor = (g) => new Date(new Date(g.kickoff).getTime() - ONE_HOUR_MS);
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+  const freezeAtFor = (g) => new Date(new Date(g.kickoff).getTime() - TWO_HOURS_MS);
+
   const now = () => Date.now();
 
   const [pregameProbByKey, setPregameProbByKey] = useState({}); // gameKey -> { home, away, asOf }
@@ -1059,8 +1060,7 @@ export default function AllGamesCalendarNFL(){
     });
   }, [selectedGames, liveByKey]);
 
-  // Freeze pregame probability: compute exactly 1 hour before kickoff (or immediately if past that)
-  useEffect(() => {
+  // Freeze pregame probability: compute exactly 2 hours before kickoff (or immediately if past that)  useEffect(() => {
     // cleanup any prior timer when selection changes
     if (freezeTimerRef.current) {
       clearTimeout(freezeTimerRef.current);
@@ -1392,7 +1392,7 @@ export default function AllGamesCalendarNFL(){
                     // Not frozen yet—inform the user when it will freeze
                     return (
                       <Typography variant="body2" sx={{ opacity:.85 }}>
-                        Pregame estimate will freeze 1 hour before kickoff (
+                        Pregame estimate will freeze 2 hours before kickoff (
                         {freezeAt.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}).
                         Open again after that time to see the frozen value.
                       </Typography>
@@ -1415,7 +1415,7 @@ export default function AllGamesCalendarNFL(){
                         sx={{ height:10, borderRadius:1 }}
                       />
                       <Typography variant="caption" sx={{ display:"block", mt:0.5, opacity:.8 }}>
-                        Frozen 1h pre-kickoff
+                        Frozen 2h pre-kickoff
                         {pref.frozen?.frozenAt
                           ? ` · at ${new Date(pref.frozen.frozenAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`
                           : ""}
