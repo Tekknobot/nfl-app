@@ -80,12 +80,6 @@ export default function Contact() {
               </Button>
             </Stack>
           </form>
-
-          <Divider sx={{ my: 3 }} />
-          <Typography variant="body2">
-            Prefer your own client? Email {" "}
-            <MuiLink href={`mailto:${getEmail()}`} underline="hover">{getEmail()}</MuiLink>
-          </Typography>
         </CardContent>
       </Card>
     </Box>
