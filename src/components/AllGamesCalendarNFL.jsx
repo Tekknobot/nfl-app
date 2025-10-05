@@ -858,7 +858,13 @@ export default function AllGamesCalendarNFL(){
   const [selectedDate, setSelectedDate] = useState(()=> new Date());
   const [selected, setSelected] = useState(null); // { g, d }
   const [liveByKey, setLiveByKey] = useState({});
+
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const freezeAtFor = (g) => new Date(new Date(g.kickoff).getTime() - ONE_HOUR_MS);
+  const now = () => Date.now();
+
   const [pregameProbByKey, setPregameProbByKey] = useState({}); // gameKey -> { home, away, asOf }
+  const freezeTimerRef = useRef(null);
 
   // probability state
   const [prob, setProb] = useState(null);       // { home, away } or null
@@ -1026,30 +1032,52 @@ export default function AllGamesCalendarNFL(){
     });
   }, [selectedGames, liveByKey]);
 
-  // Freeze pregame probability (computed once per game)
+  // Freeze pregame probability: compute exactly 1 hour before kickoff (or immediately if past that)
   useEffect(() => {
+    // cleanup any prior timer when selection changes
+    if (freezeTimerRef.current) {
+      clearTimeout(freezeTimerRef.current);
+      freezeTimerRef.current = null;
+    }
+    if (!selected?.g) return;
+
     let cancelled = false;
-    async function ensurePregame() {
-      if (!selected?.g) return;
-      const k = gameKey(selected.g);
-      if (pregameProbByKey[k]) return; // already frozen
+    const k = gameKey(selected.g);
+    const freezeAt = freezeAtFor(selected.g).getTime();
+    const doFreeze = async () => {
       try {
         const res = await getWinProbabilityForGame(selected.g);
         if (!cancelled && res) {
           setPregameProbByKey(prev => ({
             ...prev,
             [k]: {
-              home: res.home,           // optional: round here
+              home: res.home,    // you can round here if desired
               away: res.away,
-              asOf: new Date().toISOString()
+              asOf: new Date().toISOString(),
+              frozenAt: new Date(Math.max(now(), freezeAt)).toISOString()
             }
           }));
         }
       } catch {}
+    };
+
+    if (now() >= freezeAt) {
+      // We're already inside/past the freeze window -> compute immediately
+      doFreeze();
+    } else {
+      // Not yet time: schedule a one-shot timer for the freeze moment
+      const delay = Math.max(0, freezeAt - now());
+      freezeTimerRef.current = setTimeout(doFreeze, delay);
     }
-    ensurePregame();
-    return () => { cancelled = true; };
-  }, [selected, pregameProbByKey]);
+
+    return () => {
+      cancelled = true;
+      if (freezeTimerRef.current) {
+        clearTimeout(freezeTimerRef.current);
+        freezeTimerRef.current = null;
+      }
+    };
+  }, [selected, setPregameProbByKey]);
 
   // Live status / final score updater for the open game
   useEffect(() => {
@@ -1288,35 +1316,49 @@ export default function AllGamesCalendarNFL(){
                   Win probability (simple model)
                 </Typography>
 
-                   {(() => {
-                     const k = selected ? gameKey(selected.g) : null;
-                     const frozen = k ? pregameProbByKey[k] : null;
-                     if (!frozen) return <LinearProgress sx={{ height:6, borderRadius:1 }} />; // computing once
-                     return (
-                  <>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb:0.5 }}>
-                      <Typography variant="body2">{selected.g.home}</Typography>
-                      <Typography variant="body2" sx={{ fontWeight:600 }}>
-                        {(frozen.home * 100).toFixed(0)}%
-                      </Typography>
-                    </Stack>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.max(0, Math.min(100, frozen.home * 100))}
-                      sx={{ height:10, borderRadius:1 }}
-                    />
-                    <Typography variant="caption" sx={{ display:"block", mt:0.5, opacity:.8 }}>
-                      Pregame win probability (frozen){frozen.asOf ? ` · as of ${new Date(frozen.asOf).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}` : ""}
-                    </Typography>
-                  </>
-                 );
-               })()}
+                {(() => {
+                  const k = selected ? gameKey(selected.g) : null;
+                  const frozen = k ? pregameProbByKey[k] : null;
+                  const freezeAt = selected ? freezeAtFor(selected.g) : null;
+                  const frozenReady = Boolean(frozen);
+                  const beforeFreeze = freezeAt ? now() < freezeAt.getTime() : false;
 
-                {!probLoading && prob === null && (
-                  <Typography variant="body2" sx={{ opacity:.8 }}>
-                    Win probability unavailable (data not ready or rate-limited).
-                  </Typography>
-                )}
+                  if (!frozenReady && !beforeFreeze) {
+                    // We’re past freeze time but haven’t computed yet (first open): brief spinner
+                    return <LinearProgress sx={{ height:6, borderRadius:1 }} />;
+                  }
+
+                  if (!frozenReady && beforeFreeze) {
+                    // Not yet frozen; informative pre-freeze message
+                    return (
+                      <Typography variant="body2" sx={{ opacity:.85 }}>
+                        Pregame estimate will freeze 1 hour before kickoff ({freezeAt.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}).
+                        Open the game again after that time to see the frozen value.
+                      </Typography>
+                    );
+                  }
+
+                  // Frozen and ready
+                  return (
+                    <>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb:0.5 }}>
+                        <Typography variant="body2">{selected.g.home}</Typography>
+                        <Typography variant="body2" sx={{ fontWeight:600 }}>
+                          {(frozen.home * 100).toFixed(0)}%
+                        </Typography>
+                      </Stack>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.max(0, Math.min(100, frozen.home * 100))}
+                        sx={{ height:10, borderRadius:1 }}
+                      />
+                      <Typography variant="caption" sx={{ display:"block", mt:0.5, opacity:.8 }}>
+                        Frozen 1h pre-kickoff
+                        {frozen.frozenAt ? ` · at ${new Date(frozen.frozenAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}` : ""}
+                      </Typography>
+                    </>
+                  );
+                })()}
               </Box>
 
               <List dense>
