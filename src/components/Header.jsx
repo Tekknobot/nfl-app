@@ -70,7 +70,7 @@ export default function Header() {
               mr: 1
             }}
           >
-            SNP.COUNT
+            
           </Typography>
         </Box>
 
