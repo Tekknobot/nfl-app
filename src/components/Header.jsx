@@ -74,28 +74,12 @@ export default function Header() {
             component={RouterLink}
             to="/"
             aria-label="SnappCount home"
-            sx={{
-              display: "flex",            // already inline-flex, fine
-              alignItems: "center",
-              gap: 1,
-              color: "inherit",
-              textDecoration: "none"
-            }}
+            sx={{ display: "inline-flex", alignItems: "center", gap: 1, color: "inherit", textDecoration: "none" }}
           >
-            {/* Football icon and text inline */}
-            <Stack direction="row" alignItems="center" spacing={0.75}>
-              <SportsFootballIcon />
-              <Typography
-                variant="subtitle1"
-                sx={{
-                  letterSpacing: 1,
-                  display: "inline",      // keep visible beside icon on all sizes
-                  fontWeight: 600
-                }}
-              >
-                SnappCount
-              </Typography>
-            </Stack>
+            <SportsFootballIcon />
+            <Typography variant="subtitle1" sx={{ display: { xs: "none", sm: "inline" }, letterSpacing: 1 }}>
+              SnappCount
+            </Typography>
           </Box>
 
           {/* Spacer */}
