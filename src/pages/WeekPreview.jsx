@@ -9,6 +9,56 @@ import {
 } from "../lib/nflShared";
 import AdSlot from "../components/AdSlot";
 
+// Turn each game into a short narrative
+const quickNoteForGame = (g) => {
+  const hasProb = typeof g._p === "number";
+  const dt = new Date(g.kickoff);
+  const day = dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  // Basic confidence bucketing
+  if (!hasProb) {
+    return `Scheduled for ${day} at ${time}${g.tv ? ` on ${g.tv}` : ""}.`;
+  }
+
+  const p = g._p; // home win prob 0..1
+  const home = g.home, away = g.away;
+  const pct = (p * 100).toFixed(0);
+
+  let line;
+  if (p >= 0.70) {
+    line = `${home} are heavy favorites (${pct}%) vs ${away}.`;
+  } else if (p >= 0.60) {
+    line = `${home} hold a solid edge (${pct}%) over ${away}.`;
+  } else if (p >= 0.53) {
+    line = `${home} have a slight advantage (${pct}%) against ${away}.`;
+  } else if (p > 0.47) {
+    line = `This one’s close to a coin-flip (${pct}% home).`;
+  } else if (p > 0.40) {
+    line = `${away} have a live upset chance (${(100 - pct).toFixed(0)}% away).`;
+  } else {
+    line = `${away} are notable underdogs (${(100 - pct).toFixed(0)}% away).`;
+  }
+
+  const extras = [
+    `Kickoff ${day} ${time}`,
+    g.tv ? `TV: ${g.tv}` : null,
+    g.week ? `Wk ${g.week}` : null,
+  ].filter(Boolean).join(" · ");
+
+  return `${line} ${extras ? `— ${extras}.` : ""}`;
+};
+
+// Optional: a small label for the confidence chip
+const resultTagForP = (p) => {
+  if (p >= 0.70) return { label: "Heavy favorite", color: "success" };
+  if (p >= 0.60) return { label: "Favored", color: "success" };
+  if (p > 0.53)  return { label: "Slight edge", color: "default" };
+  if (p > 0.47)  return { label: "Coin-flip", color: "default" };
+  if (p > 0.40)  return { label: "Upset watch", color: "warning" };
+  return { label: "Long shot", color: "warning" };
+};
+
 export default function WeekPreview(){
   const [loading, setLoading] = useState(true);
   const [games, setGames] = useState([]);
@@ -169,44 +219,69 @@ export default function WeekPreview(){
               <Typography variant="h6" sx={{ mb:1 }}>All Matchups & Quick Notes</Typography>
               <Stack spacing={1.25}>
                 {games.map((g,i)=>(
-                  <Card key={i} variant="outlined">
-                    <CardContent sx={{ p:{ xs:1, sm:1.5 } }}>
-                      <Stack direction={{ xs:"column", sm:"row" }} justifyContent="space-between" alignItems={{ xs:"flex-start", sm:"center" }}>
+                    <Card key={i} variant="outlined">
+                        <CardContent sx={{ p:{ xs:1, sm:1.5 } }}>
+                        <Stack
+                        direction={{ xs:"column", sm:"row" }}
+                        justifyContent="space-between"
+                        alignItems={{ xs:"flex-start", sm:"center" }}
+                        >
                         <Typography sx={{ fontWeight:700 }}>
-                          {g.away} @ {g.home}
+                            {g.away} @ {g.home}
                         </Typography>
                         <Typography variant="caption" sx={{ opacity:.8 }}>
-                          {new Date(g.kickoff).toLocaleString()}
+                            {new Date(g.kickoff).toLocaleString()}
                         </Typography>
-                      </Stack>
+                        </Stack>
 
-                      {typeof g._p === "number" ? (
+                        {typeof g._p === "number" ? (
                         <Box sx={{ mt:.75 }}>
-                          <Stack direction="row" justifyContent="space-between">
+                            {/* Probability bar + tag chip */}
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:0.5 }}>
                             <Typography variant="caption">{g.home}</Typography>
-                            <Typography variant="caption" sx={{ fontWeight:700 }}>{fmtPct(g._p)}</Typography>
-                          </Stack>
-                          <LinearProgress
-                            aria-label={`Home win probability ${fmtPct(g._p)}`}
+                            <Stack direction="row" spacing={1} alignItems="center">
+                                {(() => {
+                                const tag = resultTagForP(g._p);
+                                return <Chip size="small" label={tag.label} color={tag.color} />;
+                                })()}
+                                <Typography variant="caption" sx={{ fontWeight:700 }}>
+                                {(g._p*100).toFixed(1)}%
+                                </Typography>
+                            </Stack>
+                            </Stack>
+
+                            <LinearProgress
+                            aria-label={`Home win probability ${(g._p*100).toFixed(1)}%`}
                             variant="determinate"
                             value={Math.min(100, Math.max(0, g._p * 100))}
-                            sx={{ height: 8, borderRadius: 1 }}
-                          />
-                          {g._note && (
-                            <Tooltip title={g._note}>
-                              <Typography variant="caption" sx={{ display:"block", mt:.5, opacity:.7 }}>
+                            sx={{ height:8, borderRadius:1 }}
+                            />
+
+                            {/* Auto-written quick note */}
+                            <Typography variant="body2" sx={{ mt:.75, opacity:.9 }}>
+                            {quickNoteForGame(g)}
+                            </Typography>
+
+                            {/* Optional: show model note if present, in lighter caption */}
+                            {g._note && (
+                            <Typography variant="caption" sx={{ display:"block", mt:.25, opacity:.65 }}>
                                 {g._note}
-                              </Typography>
-                            </Tooltip>
-                          )}
+                            </Typography>
+                            )}
                         </Box>
-                      ) : (
-                        <Typography variant="caption" sx={{ opacity:.8, mt:.5 }}>
-                          Probability unavailable.
-                        </Typography>
-                      )}
-                    </CardContent>
-                  </Card>
+                        ) : (
+                        <>
+                            <Typography variant="caption" sx={{ opacity:.8, mt:.5 }}>
+                            Probability unavailable.
+                            </Typography>
+                            <Typography variant="body2" sx={{ mt:.5, opacity:.9 }}>
+                            {quickNoteForGame(g)}
+                            </Typography>
+                        </>
+                        )}
+                        </CardContent>
+                    </Card>
+
                 ))}
               </Stack>
 
