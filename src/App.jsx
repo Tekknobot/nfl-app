@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { Box, CssBaseline, ThemeProvider, createTheme, Typography } from "@mui/material";
 import Header from "./components/Header";
 import AllGamesCalendarNFL from "./components/AllGamesCalendarNFL";
+import BlogIndex from "./pages/BlogIndex";
+import WeekPreview from "./pages/WeekPreview";
+import WeekRecap from "./pages/WeekRecap";
 import About from "./components/About";
 import Contact from "./components/Contact";
 import Privacy from "./pages/Privacy";
@@ -34,6 +37,9 @@ export default function App(){
           <Routes>
             <Route path="/" element={<Navigate to="/weeks" replace />} />
             <Route path="/weeks" element={<AllGamesCalendarNFL />} />
+            <Route path="/blog" element={<BlogIndex />} />
+            <Route path="/blog/week/preview" element={<WeekPreview />} />
+            <Route path="/blog/week/recap" element={<WeekRecap />} />            
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/privacy" element={<Privacy />} />
