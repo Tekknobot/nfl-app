@@ -17,6 +17,10 @@ const LINKS = [
   { to: "/terms",   label: "Terms" }
 ];
 
+// Treat parent paths as active for nested routes, e.g. /blog/week/preview
+const isPathActive = (pathname, to) =>
+  pathname === to || (to !== "/" && pathname.startsWith(to + "/"));
+
 const NavItemInline = ({ to, children }) => (
   <RouterNavLink
     to={to}
@@ -37,6 +41,7 @@ const NavItemInline = ({ to, children }) => (
           transition: "color .15s ease, border-color .15s ease",
           "&:hover": { color: "secondary.light" }
         }}
+        aria-current={isActive ? "page" : undefined}
       >
         <Typography variant="subtitle2" sx={{ letterSpacing: .2 }}>
           {children}
@@ -72,7 +77,6 @@ export default function Header() {
             sx={{ display: "inline-flex", alignItems: "center", gap: 1, color: "inherit", textDecoration: "none" }}
           >
             <SportsFootballIcon />
-            {/* Hide text on tiny screens to save space */}
             <Typography variant="subtitle1" sx={{ display: { xs: "none", sm: "inline" }, letterSpacing: 1 }}>
               SnappCount
             </Typography>
@@ -101,12 +105,7 @@ export default function Header() {
 
       {/* Mobile drawer */}
       <Drawer anchor="right" open={open} onClose={toggle(false)}>
-        <Box
-          role="presentation"
-          sx={{ width: 280, p: 1 }}
-          onClick={toggle(false)}
-          onKeyDown={toggle(false)}
-        >
+        <Box role="presentation" sx={{ width: 280, p: 1 }}>
           <Box sx={{ px: 1.5, py: 1 }}>
             <Typography variant="subtitle1" sx={{ letterSpacing: .5 }}>
               Menu
@@ -115,17 +114,19 @@ export default function Header() {
           <Divider sx={{ mb: 1 }} />
           <List>
             {LINKS.map(({ to, label }) => {
-              const active = pathname === to;
+              const active = isPathActive(pathname, to);
               return (
                 <ListItemButton
                   key={to}
                   component={RouterLink}
                   to={to}
                   selected={active}
+                  onClick={toggle(false)}        // close drawer after navigating
                   sx={{
                     borderRadius: 1,
                     "&.Mui-selected": { bgcolor: "rgba(255,255,255,0.08)" }
                   }}
+                  aria-current={active ? "page" : undefined}
                 >
                   <ListItemText
                     primary={label}
