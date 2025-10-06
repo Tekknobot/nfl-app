@@ -1,3 +1,4 @@
+// src/pages/Privacy.jsx
 import React from "react";
 import { Box, Card, CardContent, Divider, Typography } from "@mui/material";
 
@@ -25,10 +26,10 @@ export default function Privacy() {
 
           <Typography variant="h6" sx={{ mb:1 }}>Cookies & Advertising</Typography>
           <Typography sx={{ mb:2 }}>
-            We use Google AdSense to show ads. Google and its partners may use cookies and similar
-            technologies to serve and measure ads. These technologies may personalize ads based on your visits to
-            this and other sites. You can learn more about how Google uses data and manage choices at
-            <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noreferrer"> Google’s Ads page</a>.
+            We use Google AdSense to show ads. Google and its partners may use cookies or similar
+            technologies to serve and measure ads and to personalize ad experiences. You can manage
+            ad personalization in your browser or device settings and by clearing cookies. For details
+            about how advertising cookies work, consult Google’s publicly available documentation.
           </Typography>
 
           <Typography sx={{ mb:2 }}>
@@ -42,12 +43,13 @@ export default function Privacy() {
 
           <Typography variant="h6" sx={{ mb:1 }}>Your Choices</Typography>
           <Typography sx={{ mb:2 }}>
-            You can adjust ad personalization at Google’s Ad Settings, clear cookies, or use private browsing.
+            You can adjust ad personalization in your browser or device settings, use private browsing,
+            or clear cookies at any time.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Contact</Typography>
-          <Typography>
-            Questions? Email us at <a href="mailto:hello@yourdomain.com">hello@yourdomain.com</a>.
+          <Typography sx={{ mb:0 }}>
+            Questions about this policy? See the Contact page for how to reach us.
           </Typography>
         </CardContent>
       </Card>
