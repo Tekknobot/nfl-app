@@ -76,11 +76,23 @@ export default function WeekRecap(){
                       <Typography sx={{ mb:.5 }}>
                         Final: {g.away} {g.awayScore} — {g.home} {g.homeScore}
                       </Typography>
-                      <Typography sx={{ opacity:.9 }}>
-                        Model pick: {g._verdict.predicted === "home" ? g.home : g.away}
-                        {g._verdict.confidence!=null ? ` (${(g._verdict.confidence*100).toFixed(1)}%)` : ""} ·
-                        Result: {g._verdict.correct ? "Correct" : "Upset"}
-                      </Typography>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                    {/* model pick + confidence */}
+                    <Typography sx={{ opacity:.9 }}>
+                        Model pick: <strong>{g._verdict.predicted === "home" ? g.home : g.away}</strong>
+                        {g._verdict.confidence != null ? ` (${(g._verdict.confidence * 100).toFixed(1)}%)` : ""}
+                    </Typography>
+
+                    {/* result chip */}
+                    <Chip
+                        size="small"
+                        label={g._verdict.correct ? "Correct" : "Upset"}
+                        color={g._verdict.correct ? "success" : "error"}
+                        sx={{ fontWeight: 700 }}
+                    />
+                    </Stack>
+
                     </CardContent>
                   </Card>
                 ))}
