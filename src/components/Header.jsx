@@ -63,7 +63,6 @@ export default function Header() {
         {/* Nav (text-only) */}
         <NavItem to="/weeks">Weeks</NavItem>
         <NavItem to="/about">About</NavItem>
-        <NavItem to="/contact">Contact</NavItem>
       </Toolbar>
     </AppBar>
   );
