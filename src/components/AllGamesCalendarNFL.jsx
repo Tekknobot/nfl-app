@@ -12,6 +12,7 @@ import TodayIcon from "@mui/icons-material/Today";
 import { useTheme } from "@mui/material/styles";
 import InfoPanelNFL from "./InfoPanelNFL";
 import SnapFactPanel from "./SnapFactPanel";
+import AdSlot from "./AdSlot";
 
 /* ---------- UI helpers ---------- */
 const TEAM_COLORS = {
@@ -1326,15 +1327,36 @@ export default function AllGamesCalendarNFL(){
           </Typography>
 
           {data === null ? (
-            <Stack alignItems="center" sx={{ py:3 }}><CircularProgress size={22} /></Stack>
-          ) : mergedGames.length ? (
-            <Stack spacing={1}>
-              {mergedGames.map((g, i)=>(
-                <GameRow key={i} g={g} onClick={()=> setSelected({ g, d: selectedDate })} />
-              ))}
+            <Stack alignItems="center" sx={{ py:3 }}>
+              <CircularProgress size={22} />
             </Stack>
+          ) : mergedGames.length ? (
+            <>
+              {/* 1) The list with an IN-FEED ad after the 3rd item */}
+              <Stack spacing={1}>
+                {mergedGames.map((g, i) => (
+                  <React.Fragment key={i}>
+                    <GameRow g={g} onClick={() => setSelected({ g, d: selectedDate })} />
+
+                    {/* in-feed ad (shows only if there are ≥4 games) */}
+                    {i === 2 && mergedGames.length >= 4 && (
+                      <Box sx={{ my: 1 }}>
+                        <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+                      </Box>
+                    )}
+                  </React.Fragment>
+                ))}
+              </Stack>
+
+              {/* 2) End-of-list ad (below the list, only when there were games) */}
+              <Box sx={{ mt: 2 }}>
+                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+              </Box>
+            </>
           ) : (
-            <Typography variant="body2" sx={{ opacity:0.7 }}>No games today.</Typography>
+            <Typography variant="body2" sx={{ opacity:0.7 }}>
+              No games today.
+            </Typography>
           )}
         </CardContent>
       </Card>
