@@ -5,6 +5,7 @@ import Header from "./components/Header";
 import AllGamesCalendarNFL from "./components/AllGamesCalendarNFL";
 import BlogIndex from "./pages/BlogIndex";
 import WeekPreview from "./pages/WeekPreview";
+import WeekPreviewPost from "./pages/WeekPreviewPost";
 import WeekRecap from "./pages/WeekRecap";
 import About from "./components/About";
 import Contact from "./components/Contact";
@@ -40,6 +41,7 @@ export default function App(){
             <Route path="/weeks" element={<AllGamesCalendarNFL />} />
             <Route path="/blog" element={<BlogIndex />} />
             <Route path="/blog/week/preview" element={<WeekPreview />} />
+            <Route path="/blog/week/preview/article" element={<WeekPreviewPost />} />
             <Route path="/blog/week/recap" element={<WeekRecap />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />

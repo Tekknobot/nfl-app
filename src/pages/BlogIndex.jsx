@@ -20,6 +20,9 @@ export default function BlogIndex(){
             <Button component={Link} to="/blog/week/recap" variant="outlined" size="small">
               Last Week’s Recap
             </Button>
+            <Button component={Link} to="/blog/week/preview/article" variant="text" size="small">
+              Weekly Preview (Article)
+            </Button>            
           </Stack>
         </CardContent>
       </Card>
