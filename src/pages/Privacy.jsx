@@ -13,43 +13,40 @@ export default function Privacy() {
           </Typography>
 
           <Typography sx={{ mb:2 }}>
-            SnappCount (“we”) respects your privacy. This page explains what data we process and why.
+            This page explains what information SnappCount processes and why. The service is operated by an independent developer.
           </Typography>
 
           <Divider sx={{ mb:2 }} />
-          <Typography variant="h6" sx={{ mb:1 }}>Information We Collect</Typography>
+          <Typography variant="h6" sx={{ mb:1 }}>Information Collected</Typography>
           <Typography sx={{ mb:2 }}>
-            We don’t require accounts and we don’t directly collect personal information.
-            Standard web logs (IP address, user-agent) may be processed by our hosting provider for
-            security and reliability.
+            SnappCount does not require user accounts and does not directly collect personal information.
+            Standard web logs (such as IP address and user-agent) may be processed by hosting providers for security and reliability.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Cookies & Advertising</Typography>
           <Typography sx={{ mb:2 }}>
-            We use Google AdSense to show ads. Google and its partners may use cookies or similar
-            technologies to serve and measure ads and to personalize ad experiences. You can manage
-            ad personalization in your browser or device settings and by clearing cookies. For details
-            about how advertising cookies work, consult Google’s publicly available documentation.
+            SnappCount uses Google AdSense to display advertising. Google and its partners may use cookies or similar
+            technologies to serve and measure ads and to personalize ad experiences. Ad personalization can be managed
+            in browser or device settings, and by clearing cookies. For more details about advertising cookies, refer to Google’s publicly available documentation.
           </Typography>
 
           <Typography sx={{ mb:2 }}>
-            In regions where required, we display a consent banner so you can manage cookie and advertising preferences.
+            Where required by local law, a consent banner is presented so visitors can manage cookie and advertising preferences.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Third-Party Services</Typography>
           <Typography sx={{ mb:2 }}>
-            Our game data comes from BallDon’tLie NFL APIs. Requests are made from your browser to that provider.
+            Game data is retrieved from BallDon’tLie NFL APIs. Requests are made from the user’s browser directly to that provider.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Your Choices</Typography>
           <Typography sx={{ mb:2 }}>
-            You can adjust ad personalization in your browser or device settings, use private browsing,
-            or clear cookies at any time.
+            Visitors can adjust ad personalization in browser/device settings, use private browsing modes, or clear cookies at any time.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Contact</Typography>
           <Typography sx={{ mb:0 }}>
-            Questions about this policy? See the Contact page for how to reach us.
+            Questions about this policy can be directed using the details on the Contact page.
           </Typography>
         </CardContent>
       </Card>
