@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Box, Card, CardContent, Typography, Divider, Stack, Chip, LinearProgress } from "@mui/material";
 import { startOfWeek, addDays, fetchGamesForDateBDL, getWinProbabilityForGame, dateKey } from "../lib/nflShared";
+import AdSlot from "../components/AdSlot"; // ⬅️ add this import
 
 export default function WeekPreview(){
   const [loading, setLoading] = useState(true);
@@ -12,21 +13,25 @@ export default function WeekPreview(){
     let cancelled=false;
     (async ()=>{
       setLoading(true);
-      // load 7 days of this week
       const pulls = [];
       for (let i=0;i<7;i++) pulls.push(fetchGamesForDateBDL(addDays(weekStart,i)));
       const days = await Promise.all(pulls);
       const flat = days.flat();
-      // compute probs
+
       const probs = {};
       await Promise.all(flat.map(async g=>{
-        try{ const p = await getWinProbabilityForGame(g); probs[`${dateKey(new Date(g.kickoff))}|${g.away}@${g.home}`]=p; }catch{}
+        try{
+          const p = await getWinProbabilityForGame(g);
+          probs[`${dateKey(new Date(g.kickoff))}|${g.away}@${g.home}`]=p;
+        }catch{}
       }));
+
       const withP = flat.map(g=>{
         const k = `${dateKey(new Date(g.kickoff))}|${g.away}@${g.home}`;
         const p = probs[k];
         return { ...g, _p: p ? p.home : null, _note: p?.note };
       }).sort((a,b)=> new Date(a.kickoff)-new Date(b.kickoff));
+
       if (!cancelled){ setGames(withP); setLoading(false); }
     })();
     return ()=>{ cancelled=true; };
@@ -35,9 +40,9 @@ export default function WeekPreview(){
   const highlights = useMemo(()=>{
     const g = games.filter(x=> typeof x._p === "number");
     if (!g.length) return null;
-    const fav   = [...g].sort((a,b)=> b._p - a._p)[0];
-    const dog   = [...g].sort((a,b)=> a._p - b._p)[0];
-    const coin  = [...g].sort((a,b)=> Math.abs(0.5 - a._p) - Math.abs(0.5 - b._p))[0];
+    const fav  = [...g].sort((a,b)=> b._p - a._p)[0];
+    const dog  = [...g].sort((a,b)=> a._p - b._p)[0];
+    const coin = [...g].sort((a,b)=> Math.abs(0.5 - a._p) - Math.abs(0.5 - b._p))[0];
     return { fav, dog, coin };
   },[games]);
 
@@ -49,6 +54,14 @@ export default function WeekPreview(){
           <Typography variant="caption" sx={{ opacity:.75, display:"block", mb:2 }}>
             Generated from current week’s schedule and SnappCount probabilities.
           </Typography>
+
+          {/* TOP AD — only when content is ready */}
+          {!loading && games.length > 0 && (
+            <Box sx={{ my: 2 }}>
+              <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+            </Box>
+          )}
+
           <Divider sx={{ mb:2 }} />
 
           {loading ? (
@@ -62,6 +75,11 @@ export default function WeekPreview(){
                 This week features {games.length} matchups. Below are the biggest favorite, biggest underdog,
                 and closest coin-flip according to our blended probability (70% market, 30% season model).
               </Typography>
+
+              {/* MID AD — after intro, before highlights */}
+              <Box sx={{ my: 2 }}>
+                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+              </Box>
 
               {/* Highlights */}
               {highlights && (
@@ -90,7 +108,6 @@ export default function WeekPreview(){
                 </Stack>
               )}
 
-              {/* Per-game bullets (content! ) */}
               <Divider sx={{ my:2 }} />
               <Typography variant="h6" sx={{ mb:1 }}>All Matchups & Quick Notes</Typography>
               <Stack spacing={1.25}>
@@ -109,7 +126,11 @@ export default function WeekPreview(){
                 ))}
               </Stack>
 
-              {/* Methodology blurb (E-E-A-T) */}
+              {/* BOTTOM AD — after all content */}
+              <Box sx={{ mt: 3 }}>
+                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+              </Box>
+
               <Divider sx={{ my:2 }} />
               <Typography variant="caption" sx={{ opacity:.75, display:"block" }}>
                 Methodology: probabilities blend market moneylines (de-vigged) with a season model trained on completed games

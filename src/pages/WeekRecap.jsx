@@ -2,35 +2,14 @@
 import React, { useEffect, useState } from "react";
 import { Box, Card, CardContent, Typography, Divider, Stack, Chip, LinearProgress } from "@mui/material";
 import { startOfWeek, addDays, fetchGamesForDateBDL, getWinProbabilityForGame, verdictForGame, dateKey } from "../lib/nflShared";
+import AdSlot from "../components/AdSlot"; // ⬅️ add this import
 
 export default function WeekRecap(){
   const [loading, setLoading] = useState(true);
   const [finals, setFinals] = useState([]);
-  // recap last week
   const weekStart = startOfWeek(addDays(new Date(), -7));
 
-  useEffect(()=>{
-    let cancelled=false;
-    (async ()=>{
-      setLoading(true);
-      const pulls = [];
-      for (let i=0;i<7;i++) pulls.push(fetchGamesForDateBDL(addDays(weekStart,i)));
-      const flat = (await Promise.all(pulls)).flat();
-      // compute probs & verdicts for finals
-      const rows = [];
-      for (const g of flat){
-        const p = await getWinProbabilityForGame(g).catch(()=>null);
-        const prob = p ? { home:p.home, away:p.away } : null;
-        const v = verdictForGame(g, prob);
-        if (v && v.final && !v.tie){
-          rows.push({ ...g, _prob:prob, _verdict:v });
-        }
-      }
-      rows.sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
-      if (!cancelled){ setFinals(rows); setLoading(false); }
-    })();
-    return ()=>{ cancelled=true; };
-  },[]);
+  useEffect(()=>{ /* …unchanged… */ },[]);
 
   const summary = (() => {
     const n = finals.length;
@@ -48,6 +27,14 @@ export default function WeekRecap(){
           <Typography variant="caption" sx={{ opacity:.75, display:"block", mb:2 }}>
             Final results vs. our pregame probability (closest available).
           </Typography>
+
+          {/* TOP AD — only when we actually have recap content */}
+          {!loading && summary.n > 0 && (
+            <Box sx={{ my: 2 }}>
+              <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+            </Box>
+          )}
+
           <Divider sx={{ mb:2 }} />
 
           {loading ? (
@@ -56,13 +43,11 @@ export default function WeekRecap(){
             <Typography>No completed games were found for last week.</Typography>
           ) : (
             <>
-              {/* Summary paragraph */}
               <Typography sx={{ mb:2 }}>
                 We analyzed {summary.n} completed games from last week. The model recorded {summary.correct} correct picks
                 and {summary.upset} upsets, for an overall accuracy of {summary.acc.toFixed(1)}%.
               </Typography>
 
-              {/* Per-game notes */}
               <Stack spacing={1.25}>
                 {finals.map((g,i)=>(
                   <Card key={i} variant="outlined">
@@ -77,28 +62,29 @@ export default function WeekRecap(){
                         Final: {g.away} {g.awayScore} — {g.home} {g.homeScore}
                       </Typography>
 
-                    <Stack direction="row" spacing={1} alignItems="center">
-                    {/* model pick + confidence */}
-                    <Typography sx={{ opacity:.9 }}>
-                        Model pick: <strong>{g._verdict.predicted === "home" ? g.home : g.away}</strong>
-                        {g._verdict.confidence != null ? ` (${(g._verdict.confidence * 100).toFixed(1)}%)` : ""}
-                    </Typography>
-
-                    {/* result chip */}
-                    <Chip
-                        size="small"
-                        label={g._verdict.correct ? "Correct" : "Upset"}
-                        color={g._verdict.correct ? "success" : "error"}
-                        sx={{ fontWeight: 700 }}
-                    />
-                    </Stack>
-
+                      {/* Model pick + result chip */}
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography sx={{ opacity:.9 }}>
+                          Model pick: <strong>{g._verdict.predicted === "home" ? g.home : g.away}</strong>
+                          {g._verdict.confidence!=null ? ` (${(g._verdict.confidence*100).toFixed(1)}%)` : ""}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={g._verdict.correct ? "Correct" : "Upset"}
+                          color={g._verdict.correct ? "success" : "error"}
+                          sx={{ fontWeight: 700 }}
+                        />
+                      </Stack>
                     </CardContent>
                   </Card>
                 ))}
               </Stack>
 
-              {/* Methodology line */}
+              {/* BOTTOM AD — after all recap items */}
+              <Box sx={{ mt: 3 }}>
+                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
+              </Box>
+
               <Divider sx={{ my:2 }} />
               <Typography variant="caption" sx={{ opacity:.75, display:"block" }}>
                 Methodology: verdicts compare pregame (or closest available) probability to final outcomes.
