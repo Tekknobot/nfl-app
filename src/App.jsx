@@ -1,5 +1,5 @@
 import React from "react";
-import { HashRouter as Router, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from "react-router-dom";
 import { Box, CssBaseline, ThemeProvider, createTheme, Typography } from "@mui/material";
 import Header from "./components/Header";
 import AllGamesCalendarNFL from "./components/AllGamesCalendarNFL";
