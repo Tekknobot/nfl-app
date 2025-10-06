@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, Link } from "react-router-dom";
 import { Box, CssBaseline, ThemeProvider, createTheme, Typography } from "@mui/material";
 import Header from "./components/Header";
 import AllGamesCalendarNFL from "./components/AllGamesCalendarNFL";
@@ -29,7 +29,8 @@ export default function App(){
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
+
+      <Router>
         <Header />
 
         {/* Main content */}
@@ -39,7 +40,7 @@ export default function App(){
             <Route path="/weeks" element={<AllGamesCalendarNFL />} />
             <Route path="/blog" element={<BlogIndex />} />
             <Route path="/blog/week/preview" element={<WeekPreview />} />
-            <Route path="/blog/week/recap" element={<WeekRecap />} />            
+            <Route path="/blog/week/recap" element={<WeekRecap />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/privacy" element={<Privacy />} />
@@ -52,22 +53,19 @@ export default function App(){
         <Box component="footer" sx={{ px:2, py:3, textAlign:"center", opacity:0.9 }}>
           <Typography
             variant="body2"
-            sx={{
-              "& a": { color:"inherit", textDecoration:"underline", textUnderlineOffset: "2px" },
-              display: "inline-flex",
-              gap: 1
-            }}
+            sx={{ "& a": { color:"inherit", textDecoration:"underline", textUnderlineOffset: "2px" }, display:"inline-flex", gap:1 }}
           >
             <Link to="/about">About</Link> ·
             <Link to="/privacy">Privacy</Link> ·
             <Link to="/contact">Contact</Link> ·
-            <Link to="/terms">Terms</Link>
+            <Link to="/terms">Terms</Link> ·
+            <Link to="/blog">Blog</Link>
           </Typography>
           <Typography variant="caption" sx={{ display:"block", mt:.5, opacity:.7 }}>
             © {new Date().getFullYear()} SnappCount
           </Typography>
         </Box>
-      </BrowserRouter>
+      </Router>
     </ThemeProvider>
   );
 }
