@@ -9,48 +9,28 @@ export default function WeekRecap(){
   const [finals, setFinals] = useState([]);
   const weekStart = startOfWeek(addDays(new Date(), -7));
 
-    useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-        setLoading(true);
-        try {
-        // Pull all 7 days from last week
-        const pulls = [];
-        for (let i = 0; i < 7; i++) {
-            pulls.push(fetchGamesForDateBDL(addDays(weekStart, i)));
+  useEffect(()=>{
+    let cancelled=false;
+    (async ()=>{
+      setLoading(true);
+      const pulls = [];
+      for (let i=0;i<7;i++) pulls.push(fetchGamesForDateBDL(addDays(weekStart,i)));
+      const flat = (await Promise.all(pulls)).flat();
+      // compute probs & verdicts for finals
+      const rows = [];
+      for (const g of flat){
+        const p = await getWinProbabilityForGame(g).catch(()=>null);
+        const prob = p ? { home:p.home, away:p.away } : null;
+        const v = verdictForGame(g, prob);
+        if (v && v.final && !v.tie){
+          rows.push({ ...g, _prob:prob, _verdict:v });
         }
-        const flat = (await Promise.all(pulls)).flat();
-
-        // Compute pregame probs and verdicts for finals
-        const rows = [];
-        for (const g of flat) {
-            try {
-            const p = await getWinProbabilityForGame(g);
-            const prob = p ? { home: p.home, away: p.away } : null;
-            const v = verdictForGame(g, prob);
-            if (v && v.final && !v.tie) {
-                rows.push({ ...g, _prob: prob, _verdict: v });
-            }
-            } catch {
-            // ignore per-game failures, keep going
-            }
-        }
-
-        rows.sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-
-        if (!cancelled) {
-            setFinals(rows);
-        }
-        } finally {
-        if (!cancelled) setLoading(false);
-        }
+      }
+      rows.sort((a,b)=> new Date(a.kickoff) - new Date(b.kickoff));
+      if (!cancelled){ setFinals(rows); setLoading(false); }
     })();
-
-    return () => {
-        cancelled = true;
-    };
-    }, [weekStart]);
+    return ()=>{ cancelled=true; };
+  },[]);
 
   const summary = (() => {
     const n = finals.length;
