@@ -1316,7 +1316,7 @@ export default function AllGamesCalendarNFL(){
       </Box>
 
       {/* Day agenda */}
-      <Card variant="outlined" sx={{ borderRadius:1 }}>
+      <Card variant="outlined" sx={{ borderRadius:1, mb: 3 }}>
         <CardContent sx={{ p:1.5 }}>
           <Typography variant="subtitle2" sx={{ fontWeight:700, mb:1 }}>
             {selectedDate.toLocaleDateString(undefined,{ weekday:'long', month:'short', day:'numeric' })}
@@ -1535,13 +1535,11 @@ export default function AllGamesCalendarNFL(){
         </Box>
       </Drawer>
 
-      <Box sx={{ mb: 4 }}>
-        <SeasonOverviewNFL
-          getSeasonFinals={getSeasonFinals}
-          getSeasonRatings={getSeasonRatings}
-          canonAbbr={canonAbbr}
-        />
-      </Box>
+      <SeasonOverviewNFL
+        getSeasonFinals={getSeasonFinals}
+        getSeasonRatings={getSeasonRatings}
+        canonAbbr={canonAbbr}
+      />
       
       <InfoPanelNFL />
 
