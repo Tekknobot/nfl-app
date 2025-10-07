@@ -9,6 +9,22 @@ import {
 } from "../lib/nflShared";
 import AdSlot from "../components/AdSlot";
 
+// Small, consistent ad label
+const AdLabel = () => (
+  <Typography
+    variant="overline"
+    sx={{
+      display: "block",
+      letterSpacing: 1,
+      opacity: 0.7,
+      mb: 0.5
+    }}
+    aria-label="Advertisement"
+  >
+    Advertisement
+  </Typography>
+);
+
 // Turn each game into a short narrative
 const quickNoteForGame = (g) => {
   const hasProb = typeof g._p === "number";
@@ -131,6 +147,7 @@ export default function WeekPreview(){
           {/* TOP AD — only when content is ready */}
           {hasContent && (
             <Box sx={{ my: 2 }}>
+              <AdLabel />
               <AdSlot slot="0000000000" layout="in-article" format="fluid" />
             </Box>
           )}
@@ -169,6 +186,7 @@ export default function WeekPreview(){
 
               {/* MID AD — after summary, before highlights */}
               <Box sx={{ my: 2 }}>
+                <AdLabel />
                 <AdSlot slot="0000000000" layout="in-article" format="fluid" />
               </Box>
 
@@ -287,6 +305,7 @@ export default function WeekPreview(){
 
               {/* BOTTOM AD — after all content */}
               <Box sx={{ mt: 3 }}>
+                <AdLabel />
                 <AdSlot slot="0000000000" layout="in-article" format="fluid" />
               </Box>
 

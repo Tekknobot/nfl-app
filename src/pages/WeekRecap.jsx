@@ -4,6 +4,22 @@ import { Box, Card, CardContent, Typography, Divider, Stack, Chip, LinearProgres
 import { startOfWeek, addDays, fetchGamesForDateBDL, getWinProbabilityForGame, verdictForGame, dateKey } from "../lib/nflShared";
 import AdSlot from "../components/AdSlot"; // ⬅️ add this import
 
+// Small, consistent ad label
+const AdLabel = () => (
+  <Typography
+    variant="overline"
+    sx={{
+      display: "block",
+      letterSpacing: 1,
+      opacity: 0.7,
+      mb: 0.5
+    }}
+    aria-label="Advertisement"
+  >
+    Advertisement
+  </Typography>
+);
+
 export default function WeekRecap(){
   const [loading, setLoading] = useState(true);
   const [finals, setFinals] = useState([]);
@@ -52,6 +68,7 @@ export default function WeekRecap(){
           {/* TOP AD — only when we actually have recap content */}
           {!loading && summary.n > 0 && (
             <Box sx={{ my: 2 }}>
+              <AdLabel />
               <AdSlot slot="0000000000" layout="in-article" format="fluid" />
             </Box>
           )}
@@ -103,6 +120,7 @@ export default function WeekRecap(){
 
               {/* BOTTOM AD — after all recap items */}
               <Box sx={{ mt: 3 }}>
+                <AdLabel />
                 <AdSlot slot="0000000000" layout="in-article" format="fluid" />
               </Box>
 

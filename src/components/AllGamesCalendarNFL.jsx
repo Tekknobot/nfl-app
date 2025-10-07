@@ -1335,21 +1335,9 @@ export default function AllGamesCalendarNFL(){
                 {mergedGames.map((g, i) => (
                   <React.Fragment key={i}>
                     <GameRow g={g} onClick={() => setSelected({ g, d: selectedDate })} />
-
-                    {/* in-feed ad (shows only if there are ≥4 games) */}
-                    {i === 2 && mergedGames.length >= 4 && (
-                      <Box sx={{ my: 1 }}>
-                        <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-                      </Box>
-                    )}
                   </React.Fragment>
                 ))}
               </Stack>
-
-              {/* 2) End-of-list ad (below the list, only when there were games) */}
-              <Box sx={{ mt: 2 }}>
-                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-              </Box>
             </>
           ) : (
             <Typography variant="body2" sx={{ opacity:0.7 }}>

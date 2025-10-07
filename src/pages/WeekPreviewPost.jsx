@@ -9,6 +9,22 @@ import {
 } from "../lib/nflShared";
 import AdSlot from "../components/AdSlot";
 
+// Small, consistent ad label
+const AdLabel = () => (
+  <Typography
+    variant="overline"
+    sx={{
+      display: "block",
+      letterSpacing: 1,
+      opacity: 0.7,
+      mb: 0.5
+    }}
+    aria-label="Advertisement"
+  >
+    Advertisement
+  </Typography>
+);
+
 export default function WeekPreviewPost() {
   const [loading, setLoading] = useState(true);
   const [games, setGames] = useState([]);
@@ -108,6 +124,7 @@ export default function WeekPreviewPost() {
           {/* Top ad, only after content resolves */}
           {hasContent && (
             <Box sx={{ my: 2 }}>
+              <AdLabel />
               <AdSlot slot="0000000000" layout="in-article" format="fluid" />
             </Box>
           )}
@@ -172,6 +189,7 @@ export default function WeekPreviewPost() {
 
               {/* Ad in the middle of the article */}
               <Box sx={{ my: 2 }}>
+                <AdLabel />
                 <AdSlot slot="0000000000" layout="in-article" format="fluid" />
               </Box>
 
@@ -193,6 +211,7 @@ export default function WeekPreviewPost() {
 
               {/* Bottom ad */}
               <Box sx={{ mt: 3 }}>
+                <AdLabel />
                 <AdSlot slot="0000000000" layout="in-article" format="fluid" />
               </Box>
 
