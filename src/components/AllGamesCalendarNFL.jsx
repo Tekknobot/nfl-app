@@ -1261,6 +1261,8 @@ export default function AllGamesCalendarNFL(){
 
   return (
     <Box sx={{ maxWidth: 720, mx:'auto', px:{ xs:1, sm:2 } }}>
+      <InfoPanelNFL />
+      
       {/* Sticky header with week nav */}
       <Stack
         direction="row"
@@ -1540,8 +1542,6 @@ export default function AllGamesCalendarNFL(){
         getSeasonRatings={getSeasonRatings}
         canonAbbr={canonAbbr}
       />
-      
-      <InfoPanelNFL />
 
       <SnapFactPanel />
     </Box>
