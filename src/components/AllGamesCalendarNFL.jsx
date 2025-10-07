@@ -12,7 +12,7 @@ import TodayIcon from "@mui/icons-material/Today";
 import { useTheme } from "@mui/material/styles";
 import InfoPanelNFL from "./InfoPanelNFL";
 import SnapFactPanel from "./SnapFactPanel";
-import AdSlot from "./AdSlot";
+import SeasonOverviewNFL from "./SeasonOverviewNFL";
 
 /* ---------- UI helpers ---------- */
 const TEAM_COLORS = {
@@ -1261,8 +1261,6 @@ export default function AllGamesCalendarNFL(){
 
   return (
     <Box sx={{ maxWidth: 720, mx:'auto', px:{ xs:1, sm:2 } }}>
-      <InfoPanelNFL />
-
       {/* Sticky header with week nav */}
       <Stack
         direction="row"
@@ -1536,6 +1534,14 @@ export default function AllGamesCalendarNFL(){
           )}
         </Box>
       </Drawer>
+
+      <SeasonOverviewNFL
+        getSeasonFinals={getSeasonFinals}
+        getSeasonRatings={getSeasonRatings}
+        canonAbbr={canonAbbr}
+      />
+      
+      <InfoPanelNFL />
 
       <SnapFactPanel />
     </Box>
