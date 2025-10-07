@@ -306,7 +306,7 @@ export default function SeasonOverviewNFL(props) {
   }, [finals, canon]);
 
   return (
-    <Box sx={{ mb: 4 /* 32px if theme.spacing = 8px */ }}>
+    <Box sx={{ mb: 2 }}>
       <Card variant="outlined" sx={{ borderRadius: 1 }}>
         <CardContent sx={{ p: 1.25 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>

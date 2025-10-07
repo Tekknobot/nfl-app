@@ -1535,11 +1535,13 @@ export default function AllGamesCalendarNFL(){
         </Box>
       </Drawer>
 
-      <SeasonOverviewNFL
-        getSeasonFinals={getSeasonFinals}
-        getSeasonRatings={getSeasonRatings}
-        canonAbbr={canonAbbr}
-      />
+      <Box sx={{ mb: 4 }}>
+        <SeasonOverviewNFL
+          getSeasonFinals={getSeasonFinals}
+          getSeasonRatings={getSeasonRatings}
+          canonAbbr={canonAbbr}
+        />
+      </Box>
       
       <InfoPanelNFL />
 
