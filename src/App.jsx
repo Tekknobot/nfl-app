@@ -68,7 +68,7 @@ export default function App(){
           </Typography>
         </Box>
 
-        <Analytics /> {/* ✅ correct placement */}
+        <Analytics /> {/* ✅ correct placement. */}
       </Router>
     </ThemeProvider>
   );
