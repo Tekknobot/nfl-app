@@ -11,6 +11,7 @@ import About from "./components/About";
 import Contact from "./components/Contact";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import { Analytics } from "@vercel/analytics/react"; // ✅ add this
 
 const theme = createTheme({
   palette: {
@@ -30,7 +31,6 @@ export default function App(){
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-
       <Router>
         <Header />
 
@@ -67,6 +67,8 @@ export default function App(){
             © {new Date().getFullYear()} SnappCount
           </Typography>
         </Box>
+
+        <Analytics /> {/* ✅ correct placement */}
       </Router>
     </ThemeProvider>
   );
