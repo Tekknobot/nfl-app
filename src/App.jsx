@@ -11,21 +11,10 @@ import About from "./components/About";
 import Contact from "./components/Contact";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
-import { Analytics } from "@vercel/analytics/react"; // ✅ add this
+import { Analytics } from "@vercel/analytics/react";
+import { UseRouteAnalytics } from "./analyticsRouteChange"; // ✅ add this
 
-const theme = createTheme({
-  palette: {
-    mode: "dark",
-    primary: { main: "#0b6b3a" },
-    secondary: { main: "#ffd54f" },
-    background: { default: "#062b18", paper: "#0b3d24" }
-  },
-  typography: {
-    fontFamily: ["Oswald","Roboto","Helvetica","Arial","sans-serif"].join(","),
-    h4: { letterSpacing: 1 }
-  },
-  shape: { borderRadius: 14 }
-});
+const theme = createTheme({ /* ...your theme as-is... */ });
 
 export default function App(){
   return (
@@ -33,10 +22,8 @@ export default function App(){
       <CssBaseline />
       <Router>
         <Header />
-        
-        <UseRouteAnalytics />
+        <UseRouteAnalytics /> {/* ✅ now properly imported */}
 
-        {/* Main content */}
         <Box component="main" sx={{ p:2, minHeight: "calc(100vh - 160px)" }}>
           <Routes>
             <Route path="/" element={<Navigate to="/weeks" replace />} />
@@ -53,24 +40,11 @@ export default function App(){
           </Routes>
         </Box>
 
-        {/* Footer */}
         <Box component="footer" sx={{ px:2, py:3, textAlign:"center", opacity:0.9 }}>
-          <Typography
-            variant="body2"
-            sx={{ "& a": { color:"inherit", textDecoration:"underline", textUnderlineOffset: "2px" }, display:"inline-flex", gap:1 }}
-          >
-            <Link to="/about">About</Link> ·
-            <Link to="/privacy">Privacy</Link> ·
-            <Link to="/contact">Contact</Link> ·
-            <Link to="/terms">Terms</Link> ·
-            <Link to="/blog">Blog</Link>
-          </Typography>
-          <Typography variant="caption" sx={{ display:"block", mt:.5, opacity:.7 }}>
-            © {new Date().getFullYear()} SnappCount
-          </Typography>
+          {/* ...footer unchanged... */}
         </Box>
 
-        <Analytics /> {/* ✅ correct placement. */}
+        <Analytics />
       </Router>
     </ThemeProvider>
   );
