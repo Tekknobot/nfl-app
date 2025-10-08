@@ -14,7 +14,19 @@ import Terms from "./pages/Terms";
 import { Analytics } from "@vercel/analytics/react";
 import { UseRouteAnalytics } from "./analyticsRouteChange"; // ✅ add this
 
-const theme = createTheme({ /* ...your theme as-is... */ });
+const theme = createTheme({
+  palette: {
+    mode: "dark",
+    primary: { main: "#0b6b3a" },
+    secondary: { main: "#ffd54f" },
+    background: { default: "#062b18", paper: "#0b3d24" }
+  },
+  typography: {
+    fontFamily: ["Oswald","Roboto","Helvetica","Arial","sans-serif"].join(","),
+    h4: { letterSpacing: 1 }
+  },
+  shape: { borderRadius: 14 }
+});
 
 export default function App(){
   return (
