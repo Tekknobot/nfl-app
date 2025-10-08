@@ -33,6 +33,8 @@ export default function App(){
       <CssBaseline />
       <Router>
         <Header />
+        
+        <UseRouteAnalytics />
 
         {/* Main content */}
         <Box component="main" sx={{ p:2, minHeight: "calc(100vh - 160px)" }}>
