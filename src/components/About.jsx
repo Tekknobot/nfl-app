@@ -144,7 +144,7 @@ export default function About() {
             <Typography variant="h5" sx={{ mb: 1 }}>Support</Typography>
             <Divider sx={{ mb: 2 }} />
             <Typography sx={{ mb: 2, opacity: .9 }}>
-              SnappCount (NFL) and PIVT (NBA) are free and ad-free. I cover the
+              SnappCount (NFL) is free and ad-free. I cover the
               data and hosting myself. If they make your game day smoother and
               you’d like to support the project, you can buy me a coffee:
             </Typography>
