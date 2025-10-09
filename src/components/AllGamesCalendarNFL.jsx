@@ -13,6 +13,7 @@ import { useTheme } from "@mui/material/styles";
 import InfoPanelNFL from "./InfoPanelNFL";
 import SnapFactPanel from "./SnapFactPanel";
 import SeasonOverviewNFL from "./SeasonOverviewNFL";
+import { alpha } from "@mui/material/styles";
 
 /* ---------- UI helpers ---------- */
 const TEAM_COLORS = {
@@ -1268,16 +1269,26 @@ export default function AllGamesCalendarNFL(){
         direction="row"
         alignItems="center"
         gap={1}
-        sx={{ mb:1.5, position:'sticky', top:0, zIndex:2, bgcolor:'transparent', pt:.5 }}
+        sx={(theme) => ({
+          mb: 1.5,
+          pt: .5,
+          position: "sticky",
+          top: 0,                              // sticks to top of the viewport
+          zIndex: theme.zIndex.appBar - 1,     // sits UNDER your AppBar
+          bgcolor: alpha(theme.palette.background.paper, 0.85),
+          backdropFilter: "saturate(180%) blur(8px)",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        })}
       >
-        <IconButton onClick={()=> setCursor(addWeeks(cursor,-1))}><ChevronLeftIcon/></IconButton>
-        <Typography variant={isMobile ? "h6":"h5"} sx={{ letterSpacing:1, flex:1 }}>
+        <IconButton onClick={() => setCursor(addWeeks(cursor, -1))}><ChevronLeftIcon/></IconButton>
+        <Typography variant={isMobile ? "h6" : "h5"} sx={{ letterSpacing: 1, flex: 1 }}>
           {weekLabel}
         </Typography>
         <Tooltip title="Jump to current week">
-          <IconButton onClick={()=> setCursor(startOfWeek(new Date()))}><TodayIcon/></IconButton>
+          <IconButton onClick={() => setCursor(startOfWeek(new Date()))}><TodayIcon/></IconButton>
         </Tooltip>
-        <IconButton onClick={()=> setCursor(addWeeks(cursor,1))}><ChevronRightIcon/></IconButton>
+        <IconButton onClick={() => setCursor(addWeeks(cursor, 1))}><ChevronRightIcon/></IconButton>
       </Stack>
 
       {/* Horizontal day pills */}
