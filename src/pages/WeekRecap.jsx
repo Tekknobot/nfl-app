@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Card, CardContent, Typography, Divider, Stack, Chip, LinearProgress } from "@mui/material";
 import { startOfWeek, addDays, fetchGamesForDateBDL, getWinProbabilityForGame, verdictForGame, dateKey } from "../lib/nflShared";
-import AdSlot from "../components/AdSlot"; // ⬅️ add this import
 
 // Small, consistent ad label
 const AdLabel = () => (
@@ -65,14 +64,6 @@ export default function WeekRecap(){
             Final results vs. our pregame probability (closest available).
           </Typography>
 
-          {/* TOP AD — only when we actually have recap content */}
-          {!loading && summary.n > 0 && (
-            <Box sx={{ my: 2 }}>
-              <AdLabel />
-              <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-            </Box>
-          )}
-
           <Divider sx={{ mb:2 }} />
 
           {loading ? (
@@ -117,12 +108,6 @@ export default function WeekRecap(){
                   </Card>
                 ))}
               </Stack>
-
-              {/* BOTTOM AD — after all recap items */}
-              <Box sx={{ mt: 3 }}>
-                <AdLabel />
-                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-              </Box>
 
               <Divider sx={{ my:2 }} />
               <Typography variant="caption" sx={{ opacity:.75, display:"block" }}>

@@ -23,25 +23,22 @@ export default function Privacy() {
             Standard web logs (such as IP address and user-agent) may be processed by hosting providers for security and reliability.
           </Typography>
 
-          <Typography variant="h6" sx={{ mb:1 }}>Cookies & Advertising</Typography>
+          <Typography variant="h6" sx={{ mb:1 }}>Cookies & Tracking</Typography>
           <Typography sx={{ mb:2 }}>
-            SnappCount uses Google AdSense to display advertising. Google and its partners may use cookies or similar
-            technologies to serve and measure ads and to personalize ad experiences. Ad personalization can be managed
-            in browser or device settings, and by clearing cookies. For more details about advertising cookies, refer to Google’s publicly available documentation.
-          </Typography>
-
-          <Typography sx={{ mb:2 }}>
-            Where required by local law, a consent banner is presented so visitors can manage cookie and advertising preferences.
+            SnappCount does <strong>not</strong> display advertising and does <strong>not</strong> use advertising cookies.
+            The site aims to operate with minimal cookies. Any cookies present are limited to essential functionality (for example,
+            basic preferences) and are not used to track users across sites.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Third-Party Services</Typography>
           <Typography sx={{ mb:2 }}>
             Game data is retrieved from BallDon’tLie NFL APIs. Requests are made from the user’s browser directly to that provider.
+            Please review that provider’s documentation and policies for details about their data handling.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Your Choices</Typography>
           <Typography sx={{ mb:2 }}>
-            Visitors can adjust ad personalization in browser/device settings, use private browsing modes, or clear cookies at any time.
+            Visitors can use private browsing modes and clear cookies at any time through their browser settings.
           </Typography>
 
           <Typography variant="h6" sx={{ mb:1 }}>Contact</Typography>

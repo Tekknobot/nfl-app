@@ -7,7 +7,6 @@ import {
 import {
   startOfWeek, addDays, fetchGamesForDateBDL, getWinProbabilityForGame, dateKey
 } from "../lib/nflShared";
-import AdSlot from "../components/AdSlot";
 
 // Small, consistent ad label
 const AdLabel = () => (
@@ -121,14 +120,6 @@ export default function WeekPreviewPost() {
             Blended probabilities (70% market, 30% season model).
           </Typography>
 
-          {/* Top ad, only after content resolves */}
-          {hasContent && (
-            <Box sx={{ my: 2 }}>
-              <AdLabel />
-              <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-            </Box>
-          )}
-
           <Divider sx={{ mb:{ xs:1.25, sm:2 } }} />
 
           {/* Loading / empty */}
@@ -187,12 +178,6 @@ export default function WeekPreviewPost() {
                 </>
               )}
 
-              {/* Ad in the middle of the article */}
-              <Box sx={{ my: 2 }}>
-                <AdLabel />
-                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-              </Box>
-
               {/* All games list (compact) */}
               <Typography variant="h6" sx={{ mb:1 }}>All Matchups (Quick View)</Typography>
               <Stack spacing={1}>
@@ -208,12 +193,6 @@ export default function WeekPreviewPost() {
                   </Stack>
                 ))}
               </Stack>
-
-              {/* Bottom ad */}
-              <Box sx={{ mt: 3 }}>
-                <AdLabel />
-                <AdSlot slot="0000000000" layout="in-article" format="fluid" />
-              </Box>
 
               <Divider sx={{ my:2 }} />
               <Typography variant="caption" sx={{ opacity:.75, display:"block" }}>
