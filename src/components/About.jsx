@@ -136,7 +136,41 @@ export default function About() {
             SnappCount does not solicit, promote, or facilitate gambling. Ages and local laws apply.
           </Typography>
         </CardContent>
-      </Card>
+
+        </Card>
+          {/* Support / Buy Me a Coffee */}
+          <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
+            <CardContent>
+              <Typography variant="h5" sx={{ mb: 1 }}>Support</Typography>
+              <Divider sx={{ mb: 2 }} />
+              <Typography sx={{ mb: 2, opacity: .9 }}>
+                SnappCount (NFL) and PIVT (NBA) are free and ad-free. I cover the
+                data and hosting myself. If they make your game day smoother and
+                you’d like to support the project, you can buy me a coffee:
+              </Typography>
+
+              <Button
+                href="https://www.buymeacoffee.com/pizzzamoney" // ← replace with your username
+                target="_blank"
+                rel="noreferrer"
+                sx={{
+                  backgroundColor: "#FFDD00",
+                  color: "#000",
+                  fontWeight: 700,
+                  borderRadius: 2,
+                  px: 2.5,
+                  py: 1.25,
+                  "&:hover": { backgroundColor: "#ffe666" }
+                }}
+              >
+                ☕ Buy Me a Coffee
+              </Button>
+
+              <Typography variant="caption" sx={{ display:"block", mt: 1.5, opacity:.7 }}>
+                100% optional — contributions help cover API and hosting costs.
+              </Typography>
+            </CardContent>
+          </Card>
 
       </Stack>
     </Box>
