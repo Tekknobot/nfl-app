@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Stack, Typography, Card, CardContent, Divider } from "@mui/material";
+import { Box, Stack, Typography, Card, CardContent, Divider, Button } from "@mui/material";
 
 export default function About() {
   return (
@@ -92,86 +92,85 @@ export default function About() {
           </CardContent>
         </Card>
 
-      <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
-        <CardContent>
-          <Typography variant="h5" sx={{ mb: 1 }}>
-            Accuracy & Disclaimer
-          </Typography>
-          <Divider sx={{ mb: 2 }} />
+        <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ mb: 1 }}>
+              Accuracy & Disclaimer
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
 
-          <Typography sx={{ mb: 1 }}>
-            SnappCount provides win-probability estimates and matchup context for informational and
-            entertainment purposes only. It is <strong>not</strong> betting advice, a prediction market,
-            or a guarantee of outcomes.
-          </Typography>
+            <Typography sx={{ mb: 1 }}>
+              SnappCount provides win-probability estimates and matchup context for informational and
+              entertainment purposes only. It is <strong>not</strong> betting advice, a prediction market,
+              or a guarantee of outcomes.
+            </Typography>
 
-          <Typography component="div" sx={{ pl: 2, mb: 1 }}>
-            <ul style={{ margin: 0, paddingLeft: "1em" }}>
-              <li>
-                <strong>Estimates, not promises:</strong> Numbers can be wrong. Data feeds, delays, and model
-                assumptions all introduce error.
-              </li>
-              <li>
-                <strong>Markets differ:</strong> External odds and lines may change rapidly and may not match
-                the simplified probabilities shown here.
-              </li>
-              <li>
-                <strong>No liability:</strong> The developer assumes no responsibility for decisions made
-                based on this site, including financial losses.
-              </li>
-              <li>
-                <strong>No guarantees of accuracy or availability:</strong> Services may be interrupted or
-                data may be incomplete, outdated, or incorrect.
-              </li>
-            </ul>
-          </Typography>
+            <Typography component="div" sx={{ pl: 2, mb: 1 }}>
+              <ul style={{ margin: 0, paddingLeft: "1em" }}>
+                <li>
+                  <strong>Estimates, not promises:</strong> Numbers can be wrong. Data feeds, delays, and model
+                  assumptions all introduce error.
+                </li>
+                <li>
+                  <strong>Markets differ:</strong> External odds and lines may change rapidly and may not match
+                  the simplified probabilities shown here.
+                </li>
+                <li>
+                  <strong>No liability:</strong> The developer assumes no responsibility for decisions made
+                  based on this site, including financial losses.
+                </li>
+                <li>
+                  <strong>No guarantees of accuracy or availability:</strong> Services may be interrupted or
+                  data may be incomplete, outdated, or incorrect.
+                </li>
+              </ul>
+            </Typography>
 
-          <Typography sx={{ mb: 1 }}>
-            If you choose to wager, do so responsibly and only where legal. By using SnappCount, you
-            agree that the information is provided “as is” without warranties and that you bear sole
-            responsibility for how you use it.
-          </Typography>
+            <Typography sx={{ mb: 1 }}>
+              If you choose to wager, do so responsibly and only where legal. By using SnappCount, you
+              agree that the information is provided “as is” without warranties and that you bear sole
+              responsibility for how you use it.
+            </Typography>
 
-          <Typography variant="caption" sx={{ opacity: .8, display: "block" }}>
-            SnappCount does not solicit, promote, or facilitate gambling. Ages and local laws apply.
-          </Typography>
-        </CardContent>
-
+            <Typography variant="caption" sx={{ opacity: .8, display: "block" }}>
+              SnappCount does not solicit, promote, or facilitate gambling. Ages and local laws apply.
+            </Typography>
+          </CardContent>
         </Card>
-          {/* Support / Buy Me a Coffee */}
-          <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
-            <CardContent>
-              <Typography variant="h5" sx={{ mb: 1 }}>Support</Typography>
-              <Divider sx={{ mb: 2 }} />
-              <Typography sx={{ mb: 2, opacity: .9 }}>
-                SnappCount (NFL) and PIVT (NBA) are free and ad-free. I cover the
-                data and hosting myself. If they make your game day smoother and
-                you’d like to support the project, you can buy me a coffee:
-              </Typography>
 
-              <Button
-                href="https://www.buymeacoffee.com/pizzzamoney" // ← replace with your username
-                target="_blank"
-                rel="noreferrer"
-                sx={{
-                  backgroundColor: "#FFDD00",
-                  color: "#000",
-                  fontWeight: 700,
-                  borderRadius: 2,
-                  px: 2.5,
-                  py: 1.25,
-                  "&:hover": { backgroundColor: "#ffe666" }
-                }}
-              >
-                ☕ Buy Me a Coffee
-              </Button>
+        {/* Support / Buy Me a Coffee */}
+        <Card sx={{ backgroundColor: "background.paper", border:1, borderColor:"rgba(255,255,255,.08)" }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ mb: 1 }}>Support</Typography>
+            <Divider sx={{ mb: 2 }} />
+            <Typography sx={{ mb: 2, opacity: .9 }}>
+              SnappCount (NFL) and PIVT (NBA) are free and ad-free. I cover the
+              data and hosting myself. If they make your game day smoother and
+              you’d like to support the project, you can buy me a coffee:
+            </Typography>
 
-              <Typography variant="caption" sx={{ display:"block", mt: 1.5, opacity:.7 }}>
-                100% optional — contributions help cover API and hosting costs.
-              </Typography>
-            </CardContent>
-          </Card>
+            <Button
+              href="https://www.buymeacoffee.com/pizzzamoney"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                backgroundColor: "#FFDD00",
+                color: "#000",
+                fontWeight: 700,
+                borderRadius: 2,
+                px: 2.5,
+                py: 1.25,
+                "&:hover": { backgroundColor: "#ffe666" }
+              }}
+            >
+              ☕ Buy Me a Coffee
+            </Button>
 
+            <Typography variant="caption" sx={{ display:"block", mt: 1.5, opacity:.7 }}>
+              100% optional — contributions help cover API and hosting costs.
+            </Typography>
+          </CardContent>
+        </Card>
       </Stack>
     </Box>
   );
